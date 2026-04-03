@@ -21,6 +21,7 @@ WHY SQLITE?
 """
 
 import os
+import re
 import sqlite3
 from typing import Dict, List, Tuple, Optional
 import pandas as pd
@@ -437,7 +438,6 @@ def validate_sql(sql: str) -> Tuple[bool, str]:
     # Must not contain any dangerous keyword
     for kw in DANGEROUS:
         # Check for keyword as a whole word (not part of a column name)
-        import re
         if re.search(r'\b' + kw + r'\b', upper):
             return False, f"Keyword '{kw}' is not allowed"
 

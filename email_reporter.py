@@ -638,3 +638,315 @@ class ReportScheduler:
 
 # Module-level singleton — created and started by server.py
 scheduler: Optional[ReportScheduler] = None
+
+
+# ─────────────────────────────────────────────────────────
+#  WATCHDOG SCHEDULER
+#  Runs every minute, evaluates alert SQL, sends email
+#  automatically when threshold is crossed.
+# ─────────────────────────────────────────────────────────
+
+class WatchdogScheduler:
+    """
+    Background thread that checks watchdog alerts on their cron schedule.
+    When an alert is triggered (value crosses threshold) it:
+      1. Updates the DB record with triggered=1, last_value, last_status
+      2. Sends an email alert to recipient_email if configured
+    No APScheduler needed — pure stdlib threading.
+    """
+
+    def __init__(self, meta_db_path: str, execute_query_fn, decrypt_key_fn,
+                 send_email_fn, build_email_fn, adapt_sql_fn=None):
+        self._db_path        = meta_db_path
+        self._execute_query  = execute_query_fn
+        self._decrypt_key    = decrypt_key_fn
+        self._send_email     = send_email_fn
+        self._build_email    = build_email_fn
+        self._adapt_sql      = adapt_sql_fn or (lambda sql, db: sql)  # dialect adapter
+        self._thread: Optional[threading.Thread] = None
+        self._stop_evt       = threading.Event()
+        # Track previously-triggered state to avoid spam (only email on state CHANGE)
+        self._prev_triggered: Dict[int, bool] = {}
+
+    def start(self):
+        if self._thread and self._thread.is_alive():
+            return
+        self._stop_evt.clear()
+        self._thread = threading.Thread(
+            target=self._loop, daemon=True, name="linguasql-watchdog"
+        )
+        self._thread.start()
+        print("🐕 Watchdog scheduler started")
+
+    def stop(self):
+        self._stop_evt.set()
+
+    def _loop(self):
+        while not self._stop_evt.is_set():
+            try:
+                self._tick()
+            except Exception as e:
+                print(f"[Watchdog] Scheduler tick error: {e}")
+            self._stop_evt.wait(60)   # check every minute
+
+    def _tick(self):
+        """Evaluate all due active alerts and trigger emails if threshold crossed."""
+        now = datetime.now()
+        now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        try:
+            conn = sqlite3.connect(self._db_path)
+            conn.row_factory = sqlite3.Row
+            # Fetch all active alerts whose next_check is due
+            due = conn.execute(
+                "SELECT * FROM watchdog_alerts WHERE active=1 AND "
+                "(next_check IS NULL OR next_check <= ?)",
+                (now_str,)
+            ).fetchall()
+            conn.close()
+        except Exception as e:
+            print(f"[Watchdog] DB read error: {e}")
+            return
+
+        for row in due:
+            alert = dict(row)
+            self._evaluate_alert(alert, now, now_str)
+
+    def _evaluate_alert(self, alert: Dict, now: datetime, now_str: str):
+        """Run one alert's SQL, check threshold, send email if newly triggered."""
+        alert_id  = alert["id"]
+        name      = alert.get("name", f"Alert #{alert_id}")
+        sql       = alert.get("sql_query", "")
+        db_name   = alert.get("db_name", "")
+        operator  = alert.get("operator", "<")
+        threshold = float(alert.get("threshold", 0))
+        email     = alert.get("recipient_email", "")
+        cron      = alert.get("schedule_cron", "* * * * *")
+
+        # Execute the alert SQL
+        try:
+            from check_alert_condition import check_alert_condition  # type: ignore
+        except ImportError:
+            # Inline the comparison if import unavailable
+            def check_alert_condition(v, op, t):
+                ops = {"<": v<t, ">": v>t, "<=": v<=t, ">=": v>=t, "==": v==t, "!=": v!=t}
+                return ops.get(op, False)
+
+        # Execute the alert SQL — adapt syntax for the connected DB dialect first
+        try:
+            adapted_sql = self._adapt_sql(sql, db_name)
+            df, err = self._execute_query(db_name, adapted_sql)
+            if err or df is None or df.empty:
+                val       = None
+                triggered = False
+                status    = f"error: {err or 'no result'}"
+            else:
+                val_raw = df.iloc[0, 0]
+                val     = float(val_raw)
+                # Import check_alert_condition from nl_to_sql
+                try:
+                    from nl_to_sql import check_alert_condition as _cac
+                    triggered = _cac(val, operator, threshold)
+                except Exception:
+                    triggered = False
+                status = "TRIGGERED" if triggered else "OK"
+        except Exception as e:
+            val       = None
+            triggered = False
+            status    = f"exception: {e}"
+            print(f"[Watchdog] Alert '{name}' evaluation error: {e}")
+
+        # Compute next check time
+        try:
+            next_check = _cron_next_run(cron, after=now)
+            next_str   = next_check.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            # Default: 1 minute from now
+            from datetime import timedelta
+            next_str = (now + timedelta(minutes=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+        # Update DB
+        try:
+            conn = sqlite3.connect(self._db_path)
+            conn.execute(
+                "UPDATE watchdog_alerts SET last_value=?, last_run=?, last_status=?, "
+                "triggered=?, next_check=? WHERE id=?",
+                (val, now_str, status, 1 if triggered else 0, next_str, alert_id)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[Watchdog] DB update error for alert '{name}': {e}")
+
+        # Send email only when alert NEWLY transitions to triggered
+        # (avoids spam on every check when already triggered)
+        was_triggered = self._prev_triggered.get(alert_id, False)
+        self._prev_triggered[alert_id] = triggered
+
+        if triggered and not was_triggered and email.strip():
+            self._send_alert_email(alert, val, now_str)
+        elif triggered:
+            print(f"[Watchdog] ⚠️  '{name}' still triggered (val={val}) — email suppressed (already notified)")
+        elif not triggered and was_triggered:
+            print(f"[Watchdog] ✅  '{name}' recovered (val={val})")
+
+    def _send_alert_email(self, alert: Dict, val, run_time: str):
+        """Send a triggered-alert email with the current value and condition."""
+        name      = alert.get("name", "Alert")
+        condition = alert.get("nl_condition") or alert.get("description") or ""
+        sql       = alert.get("sql_query", "")
+        db_name   = alert.get("db_name", "")
+        operator  = alert.get("operator", "<")
+        threshold = alert.get("threshold", 0)
+        email     = alert.get("recipient_email", "")
+
+        # Format the value
+        try:
+            val_fmt = f"{float(val):,.2f}".rstrip("0").rstrip(".")
+        except Exception:
+            val_fmt = str(val)
+
+        op_labels = {"<": "below", ">": "above", "<=": "at or below",
+                     ">=": "at or above", "==": "equal to", "!=": "not equal to"}
+        op_label = op_labels.get(operator, operator)
+
+        subject = f"🔔 LinguaSQL Alert TRIGGERED: {name}"
+
+        html = f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8">
+<title>LinguaSQL Alert: {_he(name)}</title></head>
+<body style="margin:0;padding:0;background:#F3F4F6;
+             font-family:'Helvetica Neue',Helvetica,Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0"
+       style="background:#F3F4F6;padding:32px 0">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0"
+       style="background:#fff;border-radius:14px;overflow:hidden;
+              box-shadow:0 4px 24px rgba(0,0,0,.09)">
+
+  <!-- Header -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#DC2626 0%,#B91C1C 100%);
+               padding:22px 32px">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td>
+          <span style="background:#fff;color:#DC2626;font-weight:800;
+                       font-size:13px;border-radius:6px;padding:3px 10px">L</span>
+          <span style="color:#fff;font-size:17px;font-weight:700;
+                       margin-left:9px;vertical-align:middle">LinguaSQL</span>
+        </td>
+        <td align="right">
+          <span style="color:rgba(255,255,255,.8);font-size:12px">
+            🔔 Watchdog Alert
+          </span>
+        </td>
+      </tr></table>
+    </td>
+  </tr>
+
+  <!-- Alert banner -->
+  <tr>
+    <td style="padding:28px 32px 0">
+      <div style="background:#FEF2F2;border:2px solid #FCA5A5;border-radius:12px;
+                  padding:20px 24px;text-align:center">
+        <div style="font-size:40px;margin-bottom:8px">🚨</div>
+        <div style="font-size:22px;font-weight:800;color:#DC2626;
+                    letter-spacing:-.3px">ALERT TRIGGERED</div>
+        <div style="font-size:16px;font-weight:700;color:#1F2937;
+                    margin-top:6px">{_he(name)}</div>
+      </div>
+    </td>
+  </tr>
+
+  <!-- Details -->
+  <tr>
+    <td style="padding:24px 32px">
+      <!-- Current value card -->
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="margin-bottom:20px">
+        <tr>
+          <td width="48%" style="background:#FEF2F2;border-radius:10px;
+                                  padding:16px;text-align:center">
+            <div style="font-size:11px;font-weight:700;color:#9CA3AF;
+                        text-transform:uppercase;letter-spacing:.7px;
+                        margin-bottom:4px">Current Value</div>
+            <div style="font-size:36px;font-weight:800;color:#DC2626">
+              {val_fmt}
+            </div>
+          </td>
+          <td width="4%"></td>
+          <td width="48%" style="background:#F3F4F6;border-radius:10px;
+                                  padding:16px;text-align:center">
+            <div style="font-size:11px;font-weight:700;color:#9CA3AF;
+                        text-transform:uppercase;letter-spacing:.7px;
+                        margin-bottom:4px">Threshold ({op_label})</div>
+            <div style="font-size:36px;font-weight:800;color:#374151">
+              {threshold}
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Condition -->
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="margin-bottom:16px">
+        <tr>
+          <td style="background:#F8FAFC;border-radius:8px;
+                     border-left:4px solid #DC2626;padding:12px 16px">
+            <div style="font-size:11px;font-weight:600;color:#9CA3AF;
+                        margin-bottom:4px">CONDITION</div>
+            <div style="font-size:14px;color:#1F2937;line-height:1.5">
+              {_he(condition) if condition else f'Value is {op_label} {threshold}'}
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Meta -->
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="font-size:12px;color:#6B7280;padding:4px 0">
+            📁 <strong>Database:</strong> {_he(db_name)}
+          </td>
+          <td align="right" style="font-size:12px;color:#6B7280;padding:4px 0">
+            🕐 <strong>Triggered:</strong> {_he(run_time)}
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Footer -->
+  <tr>
+    <td style="background:#F9FAFB;padding:16px 32px;
+               border-top:1px solid #E5E7EB;border-radius:0 0 14px 14px">
+      <p style="margin:0;font-size:11px;color:#9CA3AF;text-align:center">
+        This alert was automatically triggered by
+        <strong style="color:#6B7280">LinguaSQL Watchdog</strong>.
+        Log in to pause, delete, or adjust this alert.
+      </p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body></html>"""
+
+        try:
+            ok, err = self._send_email(
+                to_email  = email,
+                subject   = subject,
+                html_body = html,
+            )
+            if ok:
+                print(f"[Watchdog] 📧 Alert email sent for '{name}' to {email} (value={val_fmt})")
+            else:
+                print(f"[Watchdog] ❌ Email send failed for '{name}': {err}")
+        except Exception as e:
+            print(f"[Watchdog] ❌ Email exception for '{name}': {e}")
+
+
+# Module-level singletons
+watchdog_scheduler: Optional[WatchdogScheduler] = None

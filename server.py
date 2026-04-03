@@ -23,6 +23,7 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Header, Form
+from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -53,7 +54,7 @@ from file_importer import (
 from sample_databases import setup_all_databases
 from pdf_exporter import build_query_pdf, build_dashboard_pdf
 from email_reporter import (
-    ReportScheduler, encrypt_key, decrypt_key,
+    ReportScheduler, WatchdogScheduler, encrypt_key, decrypt_key,
     cron_for_preset, human_readable_cron, _cron_next_run,
     build_html_email, send_email_report, get_smtp_configured,
     CRYPTO_AVAILABLE,
@@ -161,6 +162,10 @@ LOCAL_PROVIDERS = {"ollama", "huggingface"}
 
 META_DB_PATH = "databases/linguasql_meta.db"
 
+# Ensure the databases directory always exists (critical for Fly.io volume mounts)
+os.makedirs("databases", exist_ok=True)
+os.makedirs("databases/uploads", exist_ok=True)
+
 
 def _init_meta_db():
     os.makedirs("databases", exist_ok=True)
@@ -221,15 +226,21 @@ def _init_meta_db():
         threshold     REAL NOT NULL DEFAULT 0,
         provider      TEXT NOT NULL DEFAULT 'gemini',
         api_key_enc   TEXT NOT NULL DEFAULT '',
-        schedule_cron TEXT NOT NULL DEFAULT '0 * * * *',
+        schedule_cron TEXT NOT NULL DEFAULT '* * * * *',
         recipient_email TEXT NOT NULL DEFAULT '',
         last_value    REAL,
         last_run      TEXT,
         last_status   TEXT,
         triggered     INTEGER NOT NULL DEFAULT 0,
         active        INTEGER NOT NULL DEFAULT 1,
+        next_check    TEXT,
         created_at    TEXT NOT NULL
     )""")
+    # Migrate existing tables that may lack next_check column
+    try:
+        c.execute("ALTER TABLE watchdog_alerts ADD COLUMN next_check TEXT")
+    except Exception:
+        pass   # Column already exists — that's fine
     c.execute("""CREATE TABLE IF NOT EXISTS query_lineage (
         id         INTEGER PRIMARY KEY AUTOINCREMENT,
         question   TEXT NOT NULL,
@@ -330,6 +341,26 @@ def _get_shared_result(share_id: str) -> Optional[Dict]:
     except Exception:
         pass
     return None
+
+
+# ─────────────────────────────────────────────────────────
+#  HELPERS
+# ─────────────────────────────────────────────────────────
+
+def _make_serialisable(rows: list) -> list:
+    """Convert numpy types to plain Python types for JSON serialisation."""
+    import numpy as np
+    clean = []
+    for row in rows:
+        clean_row = {}
+        for k, v in row.items():
+            if isinstance(v, np.integer):    v = int(v)
+            elif isinstance(v, np.floating): v = None if np.isnan(v) else float(v)
+            elif isinstance(v, np.bool_):    v = bool(v)
+            elif isinstance(v, float) and v != v: v = None
+            clean_row[k] = v
+        clean.append(clean_row)
+    return clean
 
 
 # ─────────────────────────────────────────────────────────
@@ -510,16 +541,21 @@ def _execute_report(report: Dict) -> tuple:
     return True, result_msg
 
 
-# module-level scheduler instance
-_scheduler: Optional[ReportScheduler] = None
+# module-level scheduler holder — using a dict avoids Python's
+# "used prior to global declaration" SyntaxError in async functions
+_schedulers: Dict[str, Any] = {
+    "report":   None,   # ReportScheduler instance
+    "watchdog": None,   # WatchdogScheduler instance
+}
 
 
 # ─────────────────────────────────────────────────────────
-#  STARTUP
+#  STARTUP / SHUTDOWN  (FastAPI lifespan)
 # ─────────────────────────────────────────────────────────
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app):
+    # ── STARTUP ──────────────────────────────────────────
     print("\n🚀 LinguaSQL v1.0 starting up...")
     _init_meta_db()
     print("💾 Persistent history database ready")
@@ -530,23 +566,34 @@ async def startup_event():
     n = reload_uploaded_databases()
     if n:
         print(f"📂 Restored {n} uploaded database(s)")
-    # Restore external DB connections
     _reload_external_connections()
-    # Start background report scheduler
-    global _scheduler
-    _scheduler = ReportScheduler(META_DB_PATH, _execute_report)
-    _scheduler.start()
-    print(f"🔐 Key encryption: {'Fernet AES-256' if CRYPTO_AVAILABLE else 'base64 (set QM_SECRET_KEY for strong encryption)'}")
-    print(f"📧 SMTP configured: {'Yes' if get_smtp_configured() else 'No (set SMTP_HOST to enable email)'}")
-    print("✅ Ready at http://localhost:8000\n")
+
+    _schedulers["report"] = ReportScheduler(META_DB_PATH, _execute_report)
+    _schedulers["report"].start()
+
+    _schedulers["watchdog"] = WatchdogScheduler(
+        meta_db_path     = META_DB_PATH,
+        execute_query_fn = execute_query,
+        decrypt_key_fn   = decrypt_key,
+        send_email_fn    = send_email_report,
+        build_email_fn   = build_html_email,
+        adapt_sql_fn     = _adapt_sql_for_dialect,
+    )
+    _schedulers["watchdog"].start()
+
+    print(f"🔐 Encryption: {'Fernet AES-256' if CRYPTO_AVAILABLE else 'base64'}")
+    print(f"📧 SMTP: {'configured' if get_smtp_configured() else 'not set — add SMTP_HOST to env'}")
+    print("✅ Ready\n")
+
+    yield   # application runs here
+
+    # ── SHUTDOWN ─────────────────────────────────────────
+    for s in _schedulers.values():
+        if s:
+            s.stop()
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    global _scheduler
-    if _scheduler:
-        _scheduler.stop()
-
+app.router.lifespan_context = lifespan
 
 # ─────────────────────────────────────────────────────────
 #  FRONTEND
@@ -744,6 +791,12 @@ async def delete_connection(conn_name: str):
     if not deleted_db:
         raise HTTPException(404, f"Connection '{conn_name}' not found")
     return {"success": True, "deleted": conn_name}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint used by Fly.io, Render, Railway, etc."""
+    return {"status": "ok", "app": "LinguaSQL", "version": "1.0"}
 
 
 @app.get("/api/databases")
@@ -1276,6 +1329,8 @@ async def clean_export_pdf(req: CleanApplyRequest):
     )
 
 
+
+class SchemaSummaryRequest(BaseModel):
     db_name: str; provider: str; api_key: str = ""; model: Optional[str] = None
 
 
@@ -1866,7 +1921,7 @@ async def schema_detective(req: SchemaDetectiveRequest):
     return {"db_name": req.db_name, **result}
 
 
-
+class ExportQueryPdfRequest(BaseModel):
     title:     str
     subtitle:  str          = ""
     question:  str          = ""
@@ -2204,6 +2259,13 @@ async def send_report_now(req: SendNowRequest):
 
 
 
+class ShareRequest(BaseModel):
+    question: str
+    sql:      str
+    columns:  List[str]
+    rows:     List[Dict]
+    db_name:  str
+
 
 @app.post("/api/share")
 async def create_share_link(req: ShareRequest):
@@ -2288,22 +2350,8 @@ async def generate_dashboard(req: DashboardRequest):
 
 
 # ─────────────────────────────────────────────────────────
-#  HELPERS
+#  HELPERS  (kept here for reference — function defined earlier)
 # ─────────────────────────────────────────────────────────
-
-def _make_serialisable(rows: list) -> list:
-    import numpy as np
-    clean = []
-    for row in rows:
-        clean_row = {}
-        for k, v in row.items():
-            if isinstance(v, np.integer):   v = int(v)
-            elif isinstance(v, np.floating): v = None if np.isnan(v) else float(v)
-            elif isinstance(v, np.bool_):    v = bool(v)
-            elif isinstance(v, float) and v != v: v = None
-            clean_row[k] = v
-        clean.append(clean_row)
-    return clean
 
 
 # ─────────────────────────────────────────────────────────
@@ -2312,11 +2360,17 @@ def _make_serialisable(rows: list) -> list:
 
 if __name__ == "__main__":
     import uvicorn
+    port     = int(os.environ.get("PORT", 8000))
+    is_prod  = os.environ.get("FLY_APP_NAME") or os.environ.get("RENDER") or os.environ.get("RAILWAY_ENVIRONMENT")
     print("=" * 54)
-    print("  🧠  LinguaSQL v1.0 — Natural Language to SQL")
-    print("  🌐  http://localhost:8000")
-    print("  📖  API Docs: http://localhost:8000/docs")
+    print("  🌐  LinguaSQL v1.0 — Natural Language to SQL")
+    print(f"  🚀  http://0.0.0.0:{port}")
     print("=" * 54)
-    uvicorn.run("server:app", host="0.0.0.0",
-                port=int(os.environ.get("PORT", 8000)),
-                reload=True, log_level="info")
+    uvicorn.run(
+        "server:app",
+        host      = "0.0.0.0",
+        port      = port,
+        reload    = False,        # always off in production
+        log_level = "info",
+        workers   = 1,            # single worker (SQLite not thread-safe with multiple)
+    )

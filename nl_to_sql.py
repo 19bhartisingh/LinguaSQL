@@ -17,11 +17,53 @@ import json
 import requests
 from typing import Tuple, Optional, List, Dict, Any
 
+# Supports both google-genai (new) and google-generativeai (old/deprecated)
+_GENAI_SDK = None
 try:
     import google.generativeai as genai
     GEMINI_AVAILABLE = True
+    _GENAI_SDK = "old"
 except ImportError:
     GEMINI_AVAILABLE = False
+
+if not GEMINI_AVAILABLE:
+    try:
+        from google import genai
+        GEMINI_AVAILABLE = True
+        _GENAI_SDK = "new"
+    except ImportError:
+        pass
+
+
+def _gemini_call(api_key: str, prompt: str, system_instruction: str,
+                 model_name: str = "gemini-2.0-flash") -> str:
+    """
+    Unified Gemini call — works with both google-genai (new) and
+    google-generativeai (old/deprecated) SDKs automatically.
+    """
+    if not GEMINI_AVAILABLE:
+        raise ImportError("Install: pip install google-genai")
+    if _GENAI_SDK == "new":
+        client = genai.Client(api_key=api_key)
+        cfg = genai.types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.1,
+            max_output_tokens=2048,
+        )
+        return client.models.generate_content(
+            model=model_name, contents=prompt, config=cfg
+        ).text
+    else:
+        # Old SDK (google-generativeai)
+        import google.generativeai as _old_genai
+        _old_genai.configure(api_key=api_key)
+        model = _old_genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=system_instruction,
+        )
+        response = model.generate_content(prompt)
+        return response.text
+
 
 try:
     from openai import OpenAI
@@ -403,10 +445,8 @@ def query_gemini(api_key: str, question: str, schema_text: str,
         raise ImportError("google-generativeai not installed. Run: pip install google-generativeai")
 
     sp    = system_prompt or get_system_prompt()
-    genai.configure(api_key=api_key)
-    model    = genai.GenerativeModel(model_name="gemini-1.5-flash", system_instruction=sp)
-    prompt   = build_prompt(question, schema_text, conversation_history)
-    response = model.generate_content(prompt)
+    response_text = _gemini_call(api_key, prompt, sp)
+    response = type('R', (), {'text': response_text})()
     return parse_response(response.text)
 
 
@@ -548,12 +588,8 @@ def generate_dashboard_plan(goal: str, schema_text: str, provider: str,
     if provider == "gemini":
         if not GEMINI_AVAILABLE:
             raise ImportError("google-generativeai not installed")
-        genai.configure(api_key=api_key)
-        model_obj = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=DASHBOARD_SYSTEM_PROMPT
-        )
-        response = model_obj.generate_content(prompt)
+        response_text = _gemini_call(api_key, prompt, DASHBOARD_SYSTEM_PROMPT)
+        response = type('R', (), {'text': response_text})()
         raw = response.text
 
     elif provider == "openai":
@@ -796,9 +832,7 @@ Keys must be exact table names from the schema above."""
             return {}
 
         if provider == "gemini" and GEMINI_AVAILABLE:
-            genai.configure(api_key=api_key)
-            m_obj = genai.GenerativeModel("gemini-1.5-flash", system_instruction=SCHEMA_SUMMARY_PROMPT)
-            return _parse_summaries(m_obj.generate_content(prompt).text)
+            return _parse_summaries(_gemini_call(api_key, prompt, SCHEMA_SUMMARY_PROMPT))
 
         if provider == "openai" and OPENAI_AVAILABLE:
             client = OpenAI(api_key=api_key)
@@ -898,9 +932,7 @@ Return ONLY a JSON array of strings."""
             return ["Add an API key to get step-by-step explanations."]
 
         if provider == "gemini" and GEMINI_AVAILABLE:
-            genai.configure(api_key=api_key)
-            m_obj = genai.GenerativeModel("gemini-1.5-flash", system_instruction=EXPLAIN_STEPS_PROMPT)
-            return _parse_steps(m_obj.generate_content(prompt).text)
+            return _parse_steps(_gemini_call(api_key, prompt, EXPLAIN_STEPS_PROMPT))
 
         if provider == "openai" and OPENAI_AVAILABLE:
             client = OpenAI(api_key=api_key)
@@ -1048,12 +1080,7 @@ def generate_insights(
             return []
 
         if provider == "gemini" and GEMINI_AVAILABLE:
-            genai.configure(api_key=api_key)
-            m_obj = genai.GenerativeModel(
-                "gemini-1.5-flash",
-                system_instruction=INSIGHTS_SYSTEM_PROMPT,
-            )
-            return _parse_insights(m_obj.generate_content(prompt).text)
+            return _parse_insights(_gemini_call(api_key, prompt, INSIGHTS_SYSTEM_PROMPT))
 
         if provider == "openai" and OPENAI_AVAILABLE:
             client = OpenAI(api_key=api_key)
@@ -1228,10 +1255,7 @@ def generate_database_docs(
     raw = ""
     try:
         if provider == "gemini" and GEMINI_AVAILABLE:
-            genai.configure(api_key=api_key)
-            m_obj = genai.GenerativeModel("gemini-1.5-flash",
-                                          system_instruction=DOCS_SYSTEM_PROMPT)
-            raw = m_obj.generate_content(prompt).text
+            raw = _gemini_call(api_key, prompt, DOCS_SYSTEM_PROMPT)
 
         elif provider == "openai" and OPENAI_AVAILABLE:
             client = OpenAI(api_key=api_key)
@@ -1339,10 +1363,7 @@ def generate_reasoning_trace(
 
     try:
         if provider == "gemini" and GEMINI_AVAILABLE:
-            genai.configure(api_key=api_key)
-            m = genai.GenerativeModel("gemini-1.5-flash",
-                                      system_instruction=REASONING_TRACE_PROMPT)
-            return _parse(m.generate_content(prompt).text)
+            return _parse(_gemini_call(api_key, prompt, REASONING_TRACE_PROMPT))
 
         if provider == "openai" and OPENAI_AVAILABLE:
             client = OpenAI(api_key=api_key)
@@ -1431,10 +1452,7 @@ def detect_schema_industry(
     try:
         raw = ""
         if provider == "gemini" and GEMINI_AVAILABLE:
-            genai.configure(api_key=api_key)
-            m_obj = genai.GenerativeModel("gemini-1.5-flash",
-                                          system_instruction=SCHEMA_DETECTIVE_PROMPT)
-            raw = m_obj.generate_content(prompt).text
+            raw = _gemini_call(api_key, prompt, SCHEMA_DETECTIVE_PROMPT)
         elif provider == "openai" and OPENAI_AVAILABLE:
             client = OpenAI(api_key=api_key)
             resp = client.chat.completions.create(
