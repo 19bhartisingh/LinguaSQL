@@ -43,10 +43,12 @@ RUN mkdir -p static && \
 RUN mkdir -p databases databases/uploads
 
 # ── Environment ───────────────────────────────────────────────────────────────
-ENV PORT=8000
+# Do NOT hardcode PORT here — Railway injects it at runtime.
+# The app reads: int(os.environ.get("PORT", 8000))
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
+# EXPOSE is documentation only on Railway; the actual port comes from $PORT
 EXPOSE 8000
 
 # ── Health check ─────────────────────────────────────────────────────────────
