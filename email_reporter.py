@@ -724,13 +724,10 @@ class WatchdogScheduler:
         cron      = alert.get("schedule_cron", "* * * * *")
 
         # Execute the alert SQL
-        try:
-            from check_alert_condition import check_alert_condition  # type: ignore
-        except ImportError:
-            # Inline the comparison if import unavailable
-            def check_alert_condition(v, op, t):
-                ops = {"<": v<t, ">": v>t, "<=": v<=t, ">=": v>=t, "==": v==t, "!=": v!=t}
-                return ops.get(op, False)
+        # Inline condition checker — no external import needed
+        def check_alert_condition(v, op, t):
+            ops = {"<": v<t, ">": v>t, "<=": v<=t, ">=": v>=t, "==": v==t, "!=": v!=t}
+            return ops.get(op, False)
 
         # Execute the alert SQL — adapt syntax for the connected DB dialect first
         try:

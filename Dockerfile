@@ -1,11 +1,11 @@
 # ════════════════════════════════════════════════════
 #  LinguaSQL — Dockerfile
-#  Optimised for Railway, Fly.io, Render, any Docker host
+#  Optimised for Railway, Fly.io, Render
 # ════════════════════════════════════════════════════
 
 FROM python:3.11-slim
 
-# Install system dependencies needed for pymssql, psycopg2, and reportlab
+# ── System dependencies ───────────────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
@@ -17,35 +17,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements first for Docker layer caching
+# ── Python dependencies ───────────────────────────────────────────────────────
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application files
+# Install all packages except pymssql first (guaranteed to succeed)
+RUN pip install --no-cache-dir $(grep -v pymssql requirements.txt | grep -v '^#' | grep -v '^$' | tr '\n' ' ')
+
+# Install pymssql separately — if it fails the rest of the app still works;
+# only SQL Server connections will be unavailable.
+RUN pip install --no-cache-dir pymssql==2.3.1 || \
+    echo "WARNING: pymssql install failed — MS SQL Server connections unavailable"
+
+# ── Application files ─────────────────────────────────────────────────────────
 COPY . .
 
-# Create databases directory (Railway uses ephemeral storage by default;
-# mount a Railway Volume to /app/databases for persistence across deploys)
-RUN mkdir -p databases databases/uploads
-
-# Move frontend into place if index.html is in project root
+# Put index.html where the server expects it (static/index.html)
 RUN mkdir -p static && \
     if [ -f index.html ] && [ ! -f static/index.html ]; then \
         cp index.html static/index.html; \
     fi
 
-# Railway injects PORT at runtime; default to 8000 for local Docker runs
-ENV PORT=8000
+# Ensure database directories exist
+RUN mkdir -p databases databases/uploads
 
-# Expose port
+# ── Environment ───────────────────────────────────────────────────────────────
+ENV PORT=8000
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
 EXPOSE 8000
 
-# Health check (Railway also hits /health via railway.json)
+# ── Health check ─────────────────────────────────────────────────────────────
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')"
+    CMD python -c "import urllib.request, os; urllib.request.urlopen('http://localhost:' + os.environ.get('PORT','8000') + '/health')"
 
-# Start the app
 CMD ["python", "server.py"]
