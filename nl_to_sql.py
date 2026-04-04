@@ -55,14 +55,7 @@ def _gemini_call(api_key: str, prompt: str, system_instruction: str,
         ).text
     else:
         # Old SDK (google-generativeai)
-        import google.generativeai as _old_genai
-        _old_genai.configure(api_key=api_key)
-        model = _old_genai.GenerativeModel(
-            model_name=model_name,
-            system_instruction=system_instruction,
-        )
-        response = model.generate_content(prompt)
-        return response.text
+        _gemini_result = _gemini_call(api_key, prompt, system_instruction)
 
 
 try:
@@ -145,6 +138,37 @@ _DIALECT_HINTS = {
         "NEVER use strftime() or SQLite functions."
     ),
 }
+
+
+
+# ─────────────────────────────────────────────────────────
+#  ENV-KEY RESOLVER
+#  Allows the server owner to set API keys in .env so users
+#  never need to enter them manually in the UI.
+#  Priority: user-supplied key → env var → empty (will fail)
+# ─────────────────────────────────────────────────────────
+
+import os as _os
+
+def _resolve_key(api_key: str, provider: str) -> str:
+    """
+    Return the best available API key for a provider.
+    1. If the caller supplied a non-empty key — use it.
+    2. Otherwise fall back to the matching env variable.
+    """
+    if api_key and api_key.strip():
+        return api_key.strip()
+    env_map = {
+        "gemini": _os.environ.get("GEMINI_API_KEY", ""),
+        "openai": _os.environ.get("OPENAI_API_KEY", ""),
+        "groq":   _os.environ.get("GROQ_API_KEY",   ""),
+    }
+    return env_map.get(provider, "").strip()
+
+
+def _server_has_key(provider: str) -> bool:
+    """True when the server has a pre-configured key for this provider."""
+    return bool(_resolve_key("", provider))
 
 
 def _get_db_dialect(db_name: str) -> str:
@@ -643,11 +667,17 @@ def get_provider_status() -> Dict:
             },
         },
         "cloud": {
-            "gemini": {"name": "Google Gemini", "available": GEMINI_AVAILABLE, "needs_key": True,
+            "gemini": {"name": "Google Gemini", "available": GEMINI_AVAILABLE,
+                       "needs_key": not _server_has_key("gemini"),
+                       "server_key_configured": _server_has_key("gemini"),
                        "description": "Free tier. Fast. Recommended for students.", "key_url": "https://aistudio.google.com"},
-            "openai": {"name": "OpenAI GPT", "available": OPENAI_AVAILABLE, "needs_key": True,
+            "openai": {"name": "OpenAI GPT", "available": OPENAI_AVAILABLE,
+                       "needs_key": not _server_has_key("openai"),
+                       "server_key_configured": _server_has_key("openai"),
                        "description": "Paid API. Very accurate.", "key_url": "https://platform.openai.com"},
-            "groq":   {"name": "Groq (LLaMA)", "available": GROQ_AVAILABLE, "needs_key": True,
+            "groq":   {"name": "Groq (LLaMA)", "available": GROQ_AVAILABLE,
+                       "needs_key": not _server_has_key("groq"),
+                       "server_key_configured": _server_has_key("groq"),
                        "description": "Free tier. Extremely fast.", "key_url": "https://console.groq.com"},
         },
     }
@@ -688,16 +718,21 @@ def natural_language_to_sql(
             return query_ollama(q, schema_text, model=model,
                                conversation_history=conversation_history,
                                system_prompt=sys_prompt)
-        if not api_key.strip():
-            raise ValueError(f"API key is required for the '{provider}' provider")
+        resolved_key = _resolve_key(api_key, provider)
+        if not resolved_key:
+            raise ValueError(
+                f"No API key for '{provider}'. "
+                f"Either enter a key in the sidebar or set "
+                f"{provider.upper()}_API_KEY in your .env / Railway Variables."
+            )
         if provider == "gemini":
-            return query_gemini(api_key, q, schema_text, conversation_history,
+            return query_gemini(resolved_key, q, schema_text, conversation_history,
                                 system_prompt=sys_prompt)
         elif provider == "openai":
-            return query_openai(api_key, q, schema_text, conversation_history,
+            return query_openai(resolved_key, q, schema_text, conversation_history,
                                 system_prompt=sys_prompt)
         elif provider == "groq":
-            return query_groq(api_key, q, schema_text, conversation_history,
+            return query_groq(resolved_key, q, schema_text, conversation_history,
                               system_prompt=sys_prompt)
         else:
             raise ValueError(f"Unknown provider: '{provider}'")
@@ -828,6 +863,7 @@ Keys must be exact table names from the schema above."""
             )
             return _parse_summaries(resp.json().get("response", ""))
 
+        api_key = _resolve_key(api_key, provider)
         if not api_key.strip():
             return {}
 
@@ -928,6 +964,7 @@ Return ONLY a JSON array of strings."""
             )
             return _parse_steps(resp.json().get("response", ""))
 
+        api_key = _resolve_key(api_key, provider)
         if not api_key.strip():
             return ["Add an API key to get step-by-step explanations."]
 
@@ -1076,6 +1113,7 @@ def generate_insights(
             )
             return _parse_insights(resp.json().get("response", ""))
 
+        api_key = _resolve_key(api_key, provider)
         if not api_key.strip():
             return []
 

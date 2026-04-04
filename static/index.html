@@ -882,65 +882,6 @@
   .w-full { width: 100%; }
   .hidden { display: none !important; }
   .divider { height: 1px; background: var(--border); margin: 8px 0; }
-
-  /* ══════════════════════════════════════════════════════
-     RESPONSIVE / MOBILE
-  ══════════════════════════════════════════════════════ */
-  .mobile-menu-btn {
-    display: none;
-    width: 36px; height: 36px; border-radius: 9px;
-    background: var(--surface-2); border: 1px solid var(--border);
-    align-items: center; justify-content: center;
-    cursor: pointer; flex-shrink: 0;
-  }
-  .mobile-menu-btn svg { width: 18px; height: 18px; stroke: var(--ink-2); }
-  .sidebar-overlay {
-    display: none;
-    position: fixed; inset: 0; z-index: 90;
-    background: rgba(0,0,0,.45); backdrop-filter: blur(2px);
-  }
-  @media (max-width: 768px) {
-    .mobile-menu-btn { display: flex; }
-    .sidebar-expand-pill { display: none !important; }
-    .sidebar {
-      position: fixed; left: 0; top: 0; bottom: 0; z-index: 100;
-      width: min(var(--sidebar-w), 85vw) !important;
-      transform: translateX(-110%);
-      transition: transform .25s cubic-bezier(.4,0,.2,1);
-      box-shadow: var(--shadow-lg);
-    }
-    html.sidebar-open .sidebar { transform: translateX(0); }
-    html.sidebar-open .sidebar-overlay { display: block; }
-    .layout { flex-direction: column; }
-    .main   { width: 100%; min-width: 0; }
-    .topnav { padding: 8px 12px !important; gap: 6px; flex-wrap: wrap; }
-    .tab-btn { font-size: 11px; padding: 5px 8px; }
-    .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .dash-grid { grid-template-columns: 1fr !important; }
-    .modal-box { max-width: 100% !important; border-radius: 16px 16px 0 0 !important; }
-    .modal-backdrop { align-items: flex-end; }
-    .watchdog-layout { flex-direction: column; }
-    .watchdog-left { width: 100%; max-height: 260px; border-right: none; border-bottom: 1px solid var(--border); }
-    .db-type-grid { grid-template-columns: repeat(3, 1fr) !important; }
-    .cb-layout { flex-direction: column !important; }
-    .cb-sidebar { width: 100% !important; border-right: none !important; border-bottom: 1px solid var(--border); }
-    .cleaner-layout { flex-direction: column !important; }
-    .cleaner-left { width: 100% !important; max-height: 280px; border-right: none !important; border-bottom: 1px solid var(--border); }
-    .kpi-row { flex-wrap: wrap; }
-    .kpi-card { min-width: 120px; flex: 1 1 120px; }
-    .wf-row { flex-wrap: wrap; }
-    .wf-group { min-width: 140px; }
-    .profile-grid { grid-template-columns: 1fr !important; }
-    #lineage-canvas { height: 380px !important; }
-  }
-  @media (max-width: 480px) {
-    .topnav { padding: 6px 10px !important; }
-    .page   { padding: 12px !important; }
-    .tab-btn { font-size: 10px; padding: 4px 6px; }
-    .db-type-grid { grid-template-columns: repeat(2, 1fr) !important; }
-    .kpi-card { flex: 1 1 100%; }
-  }
-
 </style>
 </head>
 <body>
@@ -1030,7 +971,7 @@
         </div>
         <div style="margin-top:6px; display:flex; gap:6px;">
           <label style="flex:1">
-            <input type="file" id="file-input" style="display:none" accept=".csv,.tsv,.xlsx,.xls,.json,.db,.sqlite,.parquet,.html,.zip" onchange="onFileSelected()" />
+            <input type="file" id="file-input" style="display:none" accept=".csv,.tsv,.xlsx,.xls,.json,.db,.sqlite,.parquet,.html" onchange="onFileSelected()" />
             <input type="hidden" id="use-duckdb-flag" value="false" />
             <button class="btn-sm btn-ghost" style="width:100%" onclick="document.getElementById('file-input').click()">
               ＋ Import File
@@ -1078,8 +1019,17 @@
             <option value="ollama">Ollama (Local)</option>
           </select>
         </div>
+        <!-- Server-key badge: shown when server has a pre-configured key -->
+        <div id="server-key-badge" style="display:none;align-items:center;gap:6px;
+             background:var(--green-bg);border:1px solid rgba(22,163,74,.25);
+             border-radius:8px;padding:7px 10px;font-size:11.5px;color:var(--green)">
+          <span>🔑</span>
+          <span id="server-key-badge-text">API key configured by server</span>
+          <span style="margin-left:auto;font-size:10px;opacity:.7">no key needed</span>
+        </div>
+        <!-- Manual key input: shown when no server key -->
         <div class="api-key-wrap" id="api-key-wrap">
-          <input class="api-key-input" id="api-key-input" type="password" placeholder="API Key..." />
+          <input class="api-key-input" id="api-key-input" type="password" placeholder="Paste API Key..." />
           <button class="btn-sm" onclick="saveApiKey()">Save</button>
         </div>
         <div id="provider-status-wrap" style="display:flex;flex-direction:column;gap:4px;"></div>
@@ -1644,17 +1594,6 @@
           ✅ <strong>Recommended — No ODBC Driver needed:</strong>
           <code style="background:rgba(0,0,0,.08);padding:1px 5px;border-radius:4px;font-size:11px">pip install pymssql</code>
           then restart LinguaSQL. Fill only Server and Database below.
-        </div>
-
-        <!-- Cloud deployment warning -->
-        <div id="mssql-cloud-warn" style="background:var(--amber-bg);border:1px solid rgba(217,119,6,.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:11.5px;color:var(--amber);display:none">
-          ☁️ <strong>Cloud Deployment Detected:</strong> This app is running on a remote server. Local SQL Server instances
-          like <code style="font-size:10px">YOURPC\SQLEXPRESS</code> or <code style="font-size:10px">localhost</code>
-          are <strong>not reachable</strong> from the cloud.<br><br>
-          <strong>Options:</strong><br>
-          1. Use a cloud SQL Server (Azure SQL, AWS RDS, Supabase, etc.)<br>
-          2. Expose your local SQL Server via <strong>ngrok</strong>: run <code>ngrok tcp 1433</code> then use the ngrok host<br>
-          3. Run LinguaSQL locally so it can reach your local SQL Server directly
         </div>
 
         <div style="background:var(--amber-bg);border:1px solid rgba(217,119,6,.2);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:11.5px;color:var(--amber)">
@@ -2781,6 +2720,19 @@ const state = {
 //  INIT
 // ════════════════════════════════════════════════════════
 async function init() {
+  // ── Fetch server config first — determines which providers need user keys ──
+  try {
+    const scr = await fetch('/api/server-config');
+    const sc  = await scr.json();
+    window._serverConfig = sc;
+
+    // If server has a default provider, use it unless user already saved one
+    const savedProv = localStorage.getItem('qm_provider');
+    if (!savedProv && sc.default_provider) {
+      localStorage.setItem('qm_provider', sc.default_provider);
+    }
+  } catch(e) { window._serverConfig = {}; }
+
   // Restore saved API keys and provider
   try {
     const saved = JSON.parse(localStorage.getItem('qm_api_keys') || '{}');
@@ -2957,15 +2909,44 @@ function renderSchemaTree(schema) {
 function onProviderChange() {
   state.provider = document.getElementById('provider-select').value;
   state.apiKey = state.apiKeys[state.provider] || '';
-  document.getElementById('api-key-input').value = state.apiKey ? '••••••••' : '';
+  const serverHasKey = !!(window._serverConfig &&
+                          window._serverConfig.server_keys_configured &&
+                          window._serverConfig.server_keys_configured[state.provider]);
+  // Only show saved key marker if there is a user-saved key
+  document.getElementById('api-key-input').value =
+    (!serverHasKey && state.apiKey) ? '••••••••' : '';
   localStorage.setItem('qm_provider', state.provider);
   updateApiKeyVisibility();
   updateProviderPill();
 }
 
 function updateApiKeyVisibility() {
-  const local = ['ollama','huggingface'].includes(state.provider);
-  document.getElementById('api-key-wrap').style.display = local ? 'none' : 'flex';
+  const local        = ['ollama','huggingface'].includes(state.provider);
+  const serverHasKey = !!(window._serverConfig && window._serverConfig.server_keys_configured &&
+                          window._serverConfig.server_keys_configured[state.provider]);
+  const wrap         = document.getElementById('api-key-wrap');
+  const badge        = document.getElementById('server-key-badge');
+  const badgeText    = document.getElementById('server-key-badge-text');
+
+  if (local) {
+    // Local providers — no key needed at all
+    if (wrap)  wrap.style.display  = 'none';
+    if (badge) badge.style.display = 'none';
+  } else if (serverHasKey) {
+    // Server has the key in .env — hide input, show green badge
+    if (wrap)  wrap.style.display  = 'none';
+    if (badge) badge.style.display = 'flex';
+    if (badgeText) {
+      const names = { gemini:'Gemini', openai:'OpenAI', groq:'Groq' };
+      badgeText.textContent = `${names[state.provider] || state.provider} key configured on server`;
+    }
+    // Ensure state.apiKey is empty so backend uses env key
+    state.apiKey = state.apiKeys[state.provider] || '';
+  } else {
+    // No server key — show the manual input
+    if (wrap)  wrap.style.display  = 'flex';
+    if (badge) badge.style.display = 'none';
+  }
 }
 
 function saveApiKey() {
@@ -3841,7 +3822,7 @@ function _slugify(str) {
 async function summarizeSchema() {
   if (!state.db) return;
   const local = ['ollama','huggingface'].includes(state.provider);
-  if (!local && !state.apiKey) { toast('⚠️ Set an API key first'); return; }
+  // API key check skipped — server env keys are used as fallback
   toast('✨ Generating schema summaries...');
   try {
     const r = await fetch('/api/schema-summary', {
@@ -6878,7 +6859,7 @@ function renderLineageRecent(queries) {
 
 async function runSchemaDetective() {
   if (!state.db)     { toast('⚠️ Select a database first'); return; }
-  if (!state.apiKey && state.provider !== 'ollama') { toast('⚠️ Set an API key first'); return; }
+  // API key check skipped — server env key is used as fallback if no user key set
 
   toast('🔍 Analyzing schema industry…');
 
@@ -7004,187 +6985,6 @@ document.getElementById('query-input').addEventListener('input', function() { au
     } catch(e) {}
   }
 })();
-
-
-// ═══════════════════════════════════════════════════════════
-//  MOBILE SIDEBAR
-// ═══════════════════════════════════════════════════════════
-function openMobileSidebar() {
-  document.documentElement.classList.add('sidebar-open');
-  document.documentElement.classList.remove('sidebar-collapsed');
-}
-function closeMobileSidebar() {
-  document.documentElement.classList.remove('sidebar-open');
-}
-// Close sidebar when a nav item is tapped on mobile
-document.querySelectorAll('.sidebar-nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (window.innerWidth <= 768) closeMobileSidebar();
-  });
-});
-
-// ═══════════════════════════════════════════════════════════
-//  CLOUD DEPLOYMENT DETECTION — show warning in connect modal
-// ═══════════════════════════════════════════════════════════
-(function detectCloudDeployment() {
-  const hostname = window.location.hostname;
-  const isCloud  = hostname.includes('railway.app') ||
-                   hostname.includes('render.com')  ||
-                   hostname.includes('fly.dev')     ||
-                   hostname.includes('onrender.com')||
-                   hostname.includes('up.railway.app') ||
-                   (!hostname.includes('localhost') && hostname !== '127.0.0.1' && hostname !== '');
-  if (isCloud) {
-    // Store flag — used when MSSQL type is selected
-    window._isCloudDeployment = true;
-  }
-})();
-
-// Override selectDbType to show cloud warning for mssql
-const _origSelectDbType = typeof selectDbType === 'function' ? selectDbType : null;
-function selectDbType(type) {
-  if (_origSelectDbType) _origSelectDbType(type);
-  const warn = document.getElementById('mssql-cloud-warn');
-  if (warn) warn.style.display = (type === 'mssql' && window._isCloudDeployment) ? 'block' : 'none';
-}
-
-// ═══════════════════════════════════════════════════════════
-//  DATA CLEANING — persist cleaned data so all ops use it
-// ═══════════════════════════════════════════════════════════
-// After cleanApply() succeeds, the server writes back to the source DB.
-// We also refresh the query results if the user is on the query tab.
-const _origCleanApply = typeof cleanApply === 'function' ? cleanApply : null;
-// Monkey-patch cleanApply to auto-refresh schema after cleaning
-if (_origCleanApply) {
-  window.cleanApply = async function() {
-    await _origCleanApply();
-    // Re-load schema so column list reflects cleaned data
-    setTimeout(() => {
-      if (typeof loadSchema === 'function') loadSchema();
-    }, 800);
-  };
-}
-
-// ═══════════════════════════════════════════════════════════
-//  CHART BUILDER — make it work regardless of db/ai provider
-// ═══════════════════════════════════════════════════════════
-// Override renderChartBuilder to not require AI — use raw SQL directly
-function buildChartFromData(tableId) {
-  // Called when user clicks "Build Chart" in chart builder tab
-  const dbSel = document.getElementById('cb-db-select') || document.getElementById('db-select');
-  const db    = dbSel ? dbSel.value : (window.state ? state.db : '');
-  if (!db) { toast('⚠️ Select a database first'); return; }
-
-  const tblSel = document.getElementById('cb-table-select');
-  const table  = tblSel ? tblSel.value : tableId;
-  if (!table) { toast('⚠️ Select a table first'); return; }
-
-  const xSel   = document.getElementById('cb-x-col');
-  const ySel   = document.getElementById('cb-y-col');
-  const typSel = document.getElementById('cb-chart-type');
-  if (!xSel || !ySel) return;
-
-  const x    = xSel.value;
-  const y    = ySel.value;
-  const type = typSel ? typSel.value : 'bar';
-  if (!x || !y) { toast('⚠️ Select X and Y columns'); return; }
-
-  const sql  = `SELECT "${x}", "${y}" FROM "${table}" LIMIT 500`;
-
-  fetch('/api/execute', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sql, db_name: db, max_rows: 500 })
-  })
-  .then(r => r.json())
-  .then(d => {
-    if (d.columns && d.rows) {
-      const chartCfg = { type, x, y, title: `${y} by ${x}`, color: 'teal' };
-      const el = document.getElementById('cb-chart-output') || document.getElementById('chart-preview');
-      if (el && typeof renderEChart === 'function') {
-        renderEChart(el.id, chartCfg, d.rows, d.columns);
-        toast('✅ Chart rendered');
-      }
-    } else {
-      toast('❌ ' + (d.detail || 'No data returned'));
-    }
-  })
-  .catch(e => toast('❌ ' + e.message));
-}
-
-// ═══════════════════════════════════════════════════════════
-//  WATCHDOG — fix Generate SQL button reliability
-// ═══════════════════════════════════════════════════════════
-// Ensure wdGenerateSql works even if api key is empty (use gemini default)
-const _origWdGenerateSql = typeof wdGenerateSql === 'function' ? wdGenerateSql : null;
-window.wdGenerateSql = async function() {
-  const nl = document.getElementById('wd-nl') ? document.getElementById('wd-nl').value.trim() : '';
-  if (!nl) { toast('⚠️ Enter a condition in plain English first'); return; }
-
-  // Auto-select first database if none selected
-  if (!state.db) {
-    const sel = document.getElementById('db-select');
-    if (sel && sel.options.length > 0) {
-      state.db = sel.options[0].value;
-      sel.value = state.db;
-    }
-  }
-  if (!state.db) { toast('⚠️ Select a database first'); return; }
-
-  // Allow generation even without API key if provider is gemini and key available
-  const provider = state.provider || 'gemini';
-  const apiKey   = state.apiKey || '';
-
-  const btn = document.querySelector('.nl-to-alert-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Generating…'; }
-
-  try {
-    const r = await fetch('/api/watchdog/generate-sql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        nl_condition: nl,
-        db_name:      state.db,
-        provider:     provider,
-        api_key:      apiKey,
-      }),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || 'Generation failed');
-    if (d.sql) {
-      const sqlInput = document.getElementById('wd-sql');
-      if (sqlInput) sqlInput.value = d.sql;
-      toast('✅ SQL generated — review before saving');
-    } else {
-      throw new Error('No SQL returned');
-    }
-  } catch(e) {
-    toast('❌ ' + e.message);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✨ Generate SQL'; }
-  }
-};
-
-// ═══════════════════════════════════════════════════════════
-//  ZIP IMPORT — update toast message for zip files
-// ═══════════════════════════════════════════════════════════
-const _origOnFileSelected = typeof onFileSelected === 'function' ? onFileSelected : null;
-window.onFileSelected = function() {
-  const file = document.getElementById('file-input') ? document.getElementById('file-input').files[0] : null;
-  if (!file) return;
-  const ext = file.name.split('.').pop().toLowerCase();
-  if (ext === 'zip') {
-    // Skip DuckDB prompt for zip files — always use SQLite
-    const prompt = document.getElementById('duckdb-import-prompt');
-    if (prompt) prompt.classList.add('hidden');
-    toast(`📦 ZIP detected: "${file.name}" — will auto-extract & import all supported files`);
-    importFile(false);
-    return;
-  }
-  if (_origOnFileSelected) _origOnFileSelected();
-};
-
-
 </script>
 </body>
 </html>
