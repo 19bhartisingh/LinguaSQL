@@ -882,6 +882,165 @@
   .w-full { width: 100%; }
   .hidden { display: none !important; }
   .divider { height: 1px; background: var(--border); margin: 8px 0; }
+
+  /* ════════════════════════════════════════════════════════
+     PANEL TOGGLE — collapse left control panel on any page
+     Works for: Chart Builder, Data Cleaner, Watchdog
+  ════════════════════════════════════════════════════════ */
+
+  /* The floating toggle button */
+  .panel-toggle-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    left: -14px;                    /* sits on the border between panels */
+    z-index: 20;
+    width: 26px; height: 46px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: var(--shadow-sm);
+    transition: background .15s, box-shadow .15s, left .25s;
+    flex-shrink: 0;
+    color: var(--ink-3);
+    font-size: 11px;
+    line-height: 1;
+  }
+  .panel-toggle-btn:hover {
+    background: var(--surface-2);
+    box-shadow: var(--shadow);
+    color: var(--ink);
+  }
+  .panel-toggle-btn svg {
+    width: 12px; height: 12px;
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+    pointer-events: none;
+  }
+
+  /* Wrapper for right panel — needs position:relative for the button */
+  .cb-canvas,
+  .clean-right,
+  .watchdog-right {
+    position: relative;
+  }
+
+  /* ── COLLAPSED STATE ── */
+
+  /* Chart Builder */
+  .cb-layout.panel-collapsed .cb-controls {
+    width: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border-right: none !important;
+    opacity: 0;
+    pointer-events: none;
+    transition: width .25s cubic-bezier(.4,0,.2,1),
+                padding .25s, opacity .2s;
+  }
+  .cb-layout .cb-controls {
+    transition: width .25s cubic-bezier(.4,0,.2,1),
+                padding .25s, opacity .2s;
+  }
+  /* flip arrow when collapsed */
+  .cb-layout.panel-collapsed .panel-toggle-btn svg {
+    transform: rotate(180deg);
+  }
+  .cb-layout.panel-collapsed .panel-toggle-btn {
+    left: -14px;
+  }
+
+  /* Data Cleaner */
+  .clean-layout.panel-collapsed .clean-left {
+    width: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border-right: none !important;
+    opacity: 0;
+    pointer-events: none;
+    transition: width .25s cubic-bezier(.4,0,.2,1),
+                padding .25s, opacity .2s;
+  }
+  .clean-layout .clean-left {
+    transition: width .25s cubic-bezier(.4,0,.2,1),
+                padding .25s, opacity .2s;
+  }
+  .clean-layout.panel-collapsed .panel-toggle-btn svg {
+    transform: rotate(180deg);
+  }
+
+  /* Watchdog */
+  .watchdog-layout.panel-collapsed .watchdog-left {
+    width: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border-right: none !important;
+    opacity: 0;
+    pointer-events: none;
+    transition: width .25s cubic-bezier(.4,0,.2,1),
+                padding .25s, opacity .2s;
+  }
+  .watchdog-layout .watchdog-left {
+    transition: width .25s cubic-bezier(.4,0,.2,1),
+                padding .25s, opacity .2s;
+  }
+  .watchdog-layout.panel-collapsed .panel-toggle-btn svg {
+    transform: rotate(180deg);
+  }
+
+  /* Re-open pill — appears at left edge when panel is collapsed */
+  .panel-reopen-pill {
+    display: none;
+    position: absolute;
+    left: 6px; top: 50%;
+    transform: translateY(-50%);
+    z-index: 21;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 10px 5px;
+    border-radius: 8px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    letter-spacing: .5px;
+    white-space: nowrap;
+    transition: opacity .2s;
+    user-select: none;
+  }
+  .panel-collapsed .panel-reopen-pill {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* Mobile: panel toggle floats at top instead of side */
+  @media (max-width: 768px) {
+    .panel-toggle-btn {
+      top: auto !important;
+      left: 50% !important;
+      bottom: -14px !important;
+      transform: translateX(-50%) !important;
+      width: 46px; height: 26px;
+    }
+    .panel-toggle-btn svg {
+      transform: rotate(90deg);
+    }
+    .cb-layout.panel-collapsed .panel-toggle-btn svg,
+    .clean-layout.panel-collapsed .panel-toggle-btn svg,
+    .watchdog-layout.panel-collapsed .panel-toggle-btn svg {
+      transform: rotate(-90deg);
+    }
+    .panel-reopen-pill {
+      writing-mode: horizontal-tb;
+      top: auto; left: 50%; bottom: 6px;
+      transform: translateX(-50%);
+    }
+  }
+
 </style>
 </head>
 <body>
@@ -1019,17 +1178,8 @@
             <option value="ollama">Ollama (Local)</option>
           </select>
         </div>
-        <!-- Server-key badge: shown when server has a pre-configured key -->
-        <div id="server-key-badge" style="display:none;align-items:center;gap:6px;
-             background:var(--green-bg);border:1px solid rgba(22,163,74,.25);
-             border-radius:8px;padding:7px 10px;font-size:11.5px;color:var(--green)">
-          <span>🔑</span>
-          <span id="server-key-badge-text">API key configured by server</span>
-          <span style="margin-left:auto;font-size:10px;opacity:.7">no key needed</span>
-        </div>
-        <!-- Manual key input: shown when no server key -->
         <div class="api-key-wrap" id="api-key-wrap">
-          <input class="api-key-input" id="api-key-input" type="password" placeholder="Paste API Key..." />
+          <input class="api-key-input" id="api-key-input" type="password" placeholder="API Key..." />
           <button class="btn-sm" onclick="saveApiKey()">Save</button>
         </div>
         <div id="provider-status-wrap" style="display:flex;flex-direction:column;gap:4px;"></div>
@@ -1259,7 +1409,18 @@
 
         <!-- ── LEFT CONTROLS PANEL ── -->
         <div class="cb-controls">
-          <div class="cb-controls-title">⚙️ Chart Settings</div>
+          <div class="cb-controls-title" style="display:flex;align-items:center;justify-content:space-between">
+            <span>⚙️ Chart Settings</span>
+            <button onclick="togglePanel('cb')" title="Collapse panel (shortcut: [)"
+              style="background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--ink-3);
+                     font-size:11px;border-radius:5px;display:flex;align-items:center;gap:3px;
+                     transition:background .15s,color .15s"
+              onmouseover="this.style.background='var(--surface-2)';this.style.color='var(--ink)'"
+              onmouseout="this.style.background='none';this.style.color='var(--ink-3)'">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Hide
+            </button>
+          </div>
 
           <div class="cb-group">
             <label class="cb-label">Table</label>
@@ -1335,6 +1496,14 @@
 
         <!-- ── RIGHT CHART PANEL ── -->
         <div class="cb-canvas">
+          <!-- Panel collapse toggle -->
+          <button class="panel-toggle-btn" id="cb-panel-toggle-btn"
+                  onclick="togglePanel('cb')" title="Hide/show settings panel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div class="panel-reopen-pill" onclick="togglePanel('cb')" title="Show settings">
+            ⚙️ Settings
+          </div>
           <div class="cb-canvas-header" id="cb-canvas-header" style="display:none">
             <div class="cb-canvas-title" id="cb-canvas-title"></div>
             <div style="display:flex;gap:8px;margin-left:auto">
@@ -1362,6 +1531,17 @@
         <!-- ── LEFT: Issue panel ── -->
         <div class="clean-left">
           <!-- Table selector -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px 0;flex-shrink:0">
+            <span style="font-size:12px;font-weight:700;color:var(--ink)">🔍 Issues</span>
+            <button onclick="togglePanel('clean')" title="Collapse panel (shortcut: ])"
+              style="background:none;border:none;cursor:pointer;padding:2px 6px;color:var(--ink-3);
+                     font-size:11px;border-radius:5px;display:flex;align-items:center;gap:3px"
+              onmouseover="this.style.background='var(--surface-2)';this.style.color='var(--ink)'"
+              onmouseout="this.style.background='none';this.style.color='var(--ink-3)'">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Hide
+            </button>
+          </div>
           <div class="clean-table-sel">
             <div class="select-wrap" style="flex:1">
               <select id="clean-table-sel" onchange="cleanOnTableChange()"></select>
@@ -1402,6 +1582,14 @@
 
         <!-- ── RIGHT: Preview panel ── -->
         <div class="clean-right" id="clean-right">
+          <!-- Panel collapse toggle -->
+          <button class="panel-toggle-btn" id="clean-panel-toggle-btn"
+                  onclick="togglePanel('clean')" title="Hide/show issue panel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div class="panel-reopen-pill" onclick="togglePanel('clean')" title="Show issues">
+            🔍 Issues
+          </div>
           <div class="empty-state" id="clean-right-empty" style="height:100%;justify-content:center">
             <div class="empty-icon" style="font-size:40px">✨</div>
             <div class="empty-title">Cleaned data preview</div>
@@ -1432,6 +1620,17 @@
       <div class="watchdog-layout">
         <!-- LEFT: Alert list -->
         <div class="watchdog-left">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 0;flex-shrink:0">
+            <span style="font-size:12px;font-weight:700;color:var(--ink)">🔔 Active Alerts</span>
+            <button onclick="togglePanel('wd')" title="Collapse panel (shortcut: \\)"
+              style="background:none;border:none;cursor:pointer;padding:2px 6px;color:var(--ink-3);
+                     font-size:11px;border-radius:5px;display:flex;align-items:center;gap:3px"
+              onmouseover="this.style.background='var(--surface-2)';this.style.color='var(--ink)'"
+              onmouseout="this.style.background='none';this.style.color='var(--ink-3)'">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+              Hide
+            </button>
+          </div>
           <div class="watchdog-section-head">
             <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:2px">🔔 Active Alerts</div>
             <div style="font-size:11.5px;color:var(--ink-3)">Click Run to check now. Triggered alerts send email.</div>
@@ -1449,6 +1648,14 @@
         </div>
         <!-- RIGHT: Create form -->
         <div class="watchdog-right">
+          <!-- Panel collapse toggle -->
+          <button class="panel-toggle-btn" id="wd-panel-toggle-btn"
+                  onclick="togglePanel('wd')" title="Hide/show alerts list">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div class="panel-reopen-pill" onclick="togglePanel('wd')" title="Show alerts">
+            🔔 Alerts
+          </div>
           <div class="watchdog-form">
             <div class="watchdog-form-title">🔔 Create Watchdog Alert</div>
             <div class="wf-row">
@@ -2720,19 +2927,6 @@ const state = {
 //  INIT
 // ════════════════════════════════════════════════════════
 async function init() {
-  // ── Fetch server config first — determines which providers need user keys ──
-  try {
-    const scr = await fetch('/api/server-config');
-    const sc  = await scr.json();
-    window._serverConfig = sc;
-
-    // If server has a default provider, use it unless user already saved one
-    const savedProv = localStorage.getItem('qm_provider');
-    if (!savedProv && sc.default_provider) {
-      localStorage.setItem('qm_provider', sc.default_provider);
-    }
-  } catch(e) { window._serverConfig = {}; }
-
   // Restore saved API keys and provider
   try {
     const saved = JSON.parse(localStorage.getItem('qm_api_keys') || '{}');
@@ -2909,44 +3103,15 @@ function renderSchemaTree(schema) {
 function onProviderChange() {
   state.provider = document.getElementById('provider-select').value;
   state.apiKey = state.apiKeys[state.provider] || '';
-  const serverHasKey = !!(window._serverConfig &&
-                          window._serverConfig.server_keys_configured &&
-                          window._serverConfig.server_keys_configured[state.provider]);
-  // Only show saved key marker if there is a user-saved key
-  document.getElementById('api-key-input').value =
-    (!serverHasKey && state.apiKey) ? '••••••••' : '';
+  document.getElementById('api-key-input').value = state.apiKey ? '••••••••' : '';
   localStorage.setItem('qm_provider', state.provider);
   updateApiKeyVisibility();
   updateProviderPill();
 }
 
 function updateApiKeyVisibility() {
-  const local        = ['ollama','huggingface'].includes(state.provider);
-  const serverHasKey = !!(window._serverConfig && window._serverConfig.server_keys_configured &&
-                          window._serverConfig.server_keys_configured[state.provider]);
-  const wrap         = document.getElementById('api-key-wrap');
-  const badge        = document.getElementById('server-key-badge');
-  const badgeText    = document.getElementById('server-key-badge-text');
-
-  if (local) {
-    // Local providers — no key needed at all
-    if (wrap)  wrap.style.display  = 'none';
-    if (badge) badge.style.display = 'none';
-  } else if (serverHasKey) {
-    // Server has the key in .env — hide input, show green badge
-    if (wrap)  wrap.style.display  = 'none';
-    if (badge) badge.style.display = 'flex';
-    if (badgeText) {
-      const names = { gemini:'Gemini', openai:'OpenAI', groq:'Groq' };
-      badgeText.textContent = `${names[state.provider] || state.provider} key configured on server`;
-    }
-    // Ensure state.apiKey is empty so backend uses env key
-    state.apiKey = state.apiKeys[state.provider] || '';
-  } else {
-    // No server key — show the manual input
-    if (wrap)  wrap.style.display  = 'flex';
-    if (badge) badge.style.display = 'none';
-  }
+  const local = ['ollama','huggingface'].includes(state.provider);
+  document.getElementById('api-key-wrap').style.display = local ? 'none' : 'flex';
 }
 
 function saveApiKey() {
@@ -3822,7 +3987,7 @@ function _slugify(str) {
 async function summarizeSchema() {
   if (!state.db) return;
   const local = ['ollama','huggingface'].includes(state.provider);
-  // API key check skipped — server env keys are used as fallback
+  if (!local && !state.apiKey) { toast('⚠️ Set an API key first'); return; }
   toast('✨ Generating schema summaries...');
   try {
     const r = await fetch('/api/schema-summary', {
@@ -6859,7 +7024,7 @@ function renderLineageRecent(queries) {
 
 async function runSchemaDetective() {
   if (!state.db)     { toast('⚠️ Select a database first'); return; }
-  // API key check skipped — server env key is used as fallback if no user key set
+  if (!state.apiKey && state.provider !== 'ollama') { toast('⚠️ Set an API key first'); return; }
 
   toast('🔍 Analyzing schema industry…');
 
@@ -6985,6 +7150,108 @@ document.getElementById('query-input').addEventListener('input', function() { au
     } catch(e) {}
   }
 })();
+
+// ═══════════════════════════════════════════════════════════
+//  PANEL TOGGLE — collapse/expand left control panels
+//  Works for: Chart Builder (cb), Data Cleaner (clean), Watchdog (wd)
+// ═══════════════════════════════════════════════════════════
+
+const _panelState = { cb: false, clean: false, wd: false };
+
+function togglePanel(panel) {
+  const layoutMap = {
+    cb:    document.querySelector('.cb-layout'),
+    clean: document.querySelector('.clean-layout'),
+    wd:    document.querySelector('.watchdog-layout'),
+  };
+  const layout = layoutMap[panel];
+  if (!layout) return;
+
+  _panelState[panel] = !_panelState[panel];
+  const collapsed = _panelState[panel];
+
+  if (collapsed) {
+    layout.classList.add('panel-collapsed');
+  } else {
+    layout.classList.remove('panel-collapsed');
+  }
+
+  // After transition, resize any ECharts in the panel so they fill the new width
+  setTimeout(() => {
+    // Chart builder main chart
+    if (panel === 'cb') {
+      const el = document.getElementById('cb-main-chart');
+      if (el) {
+        const inst = echarts.getInstanceByDom(el);
+        if (inst) inst.resize();
+      }
+    }
+    // Resize ALL echart instances — catches dashboard charts too
+    document.querySelectorAll('[id$="-echart"],[id="cb-main-chart"]').forEach(el => {
+      const inst = echarts.getInstanceByDom(el);
+      if (inst) inst.resize();
+    });
+  }, 270); // slightly after the .25s CSS transition
+}
+
+// Auto-collapse panel on mobile when a chart is built
+function _autoCollapseOnMobile(panel) {
+  if (window.innerWidth <= 768 && !_panelState[panel]) {
+    togglePanel(panel);
+  }
+}
+
+// Hook into cbBuild to auto-collapse on mobile after chart is built
+const _origCbBuild = typeof cbBuild === 'function' ? cbBuild : null;
+if (_origCbBuild) {
+  window.cbBuild = async function() {
+    await _origCbBuild();
+    _autoCollapseOnMobile('cb');
+  };
+}
+
+// Hook into cleanApply to auto-collapse on mobile
+const _origCleanApply2 = typeof cleanApply === 'function' ? cleanApply : null;
+if (_origCleanApply2) {
+  window.cleanApply = async function() {
+    await _origCleanApply2();
+    _autoCollapseOnMobile('clean');
+    // Re-load schema so column list reflects cleaned data
+    setTimeout(() => {
+      if (typeof loadSchema === 'function') loadSchema();
+    }, 800);
+  };
+}
+
+// Keyboard shortcut: [ to toggle chart builder panel, ] for cleaner
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === '[') togglePanel('cb');
+  if (e.key === ']') togglePanel('clean');
+  if (e.key === '\\') togglePanel('wd');
+});
+
+// Re-collapse on window resize if mobile threshold crossed
+window.addEventListener('resize', () => {
+  const isMobile = window.innerWidth <= 768;
+  // On desktop — ensure panels are not broken from mobile collapsed state
+  if (!isMobile) {
+    ['cb','clean','wd'].forEach(p => {
+      const layoutMap = {
+        cb:    document.querySelector('.cb-layout'),
+        clean: document.querySelector('.clean-layout'),
+        wd:    document.querySelector('.watchdog-layout'),
+      };
+      // Don't auto-expand — respect user choice
+    });
+  }
+  // Resize all echarts
+  document.querySelectorAll('[id$="-echart"],[id="cb-main-chart"]').forEach(el => {
+    const inst = echarts.getInstanceByDom(el);
+    if (inst) inst.resize();
+  });
+});
+
 </script>
 </body>
 </html>
