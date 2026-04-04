@@ -1026,85 +1026,116 @@
   ═══════════════════════════════════════════════════════ */
   @media (max-width: 768px) {
 
-    /* ── Stack all split layouts vertically ── */
+    /* ── Stack all split layouts vertically on mobile ── */
     .cb-layout,
     .clean-layout,
     .watchdog-layout {
       flex-direction: column !important;
       height: auto !important;
+      min-height: 0 !important;
       overflow: visible !important;
     }
 
-    /* ── LEFT PANELS: collapsed by default on mobile ──
-       max-height:0 hides content; only the sticky header tab shows.
-       Transition animates open/close. */
+    /* ── LEFT PANELS: COLLAPSED BY DEFAULT ──
+       On mobile the settings/issues/alerts panel starts hidden.
+       Only the thin header tab is visible (44px).
+       The panel slides open when tapped. */
     .cb-controls,
     .clean-left,
     .watchdog-left {
       width: 100% !important;
-      max-height: 44px !important;   /* just the header tab height */
+      max-height: 44px !important;
       overflow: hidden !important;
       border-right: none !important;
       border-bottom: 1px solid var(--border) !important;
+      border-radius: 0 !important;
       flex-shrink: 0;
-      transition: max-height .35s cubic-bezier(.4,0,.2,1) !important;
+      transition: max-height .3s cubic-bezier(.4,0,.2,1) !important;
       box-sizing: border-box;
+      padding: 0 !important;
+      position: relative !important;
     }
 
-    /* Expanded state — slides down to show all controls */
+    /* When user taps the header tab, panel expands */
     .cb-controls.mobile-expanded,
     .clean-left.mobile-expanded,
     .watchdog-left.mobile-expanded {
-      max-height: 80vh !important;
+      max-height: 85vh !important;
       overflow-y: auto !important;
+      padding: 0 0 12px 0 !important;
     }
 
-    /* ── RIGHT PANELS fill full width and show chart prominently ── */
+    /* Hide the inner-panel hide buttons on mobile — the tab handles it */
+    .cb-controls .panel-inner-hide-btn,
+    .clean-left .panel-inner-hide-btn,
+    .watchdog-left .panel-inner-hide-btn { display: none !important; }
+
+    /* ── RIGHT PANELS: full width, chart visible immediately ── */
     .cb-canvas,
     .clean-right,
     .watchdog-right {
-      flex: 1 !important;
+      flex: none !important;
       width: 100% !important;
       min-width: 0 !important;
-      padding: 10px !important;
-      min-height: 0 !important;
+      padding: 12px !important;
+      position: relative !important;
     }
 
-    /* Chart fills full mobile width with good height */
+    /* Chart container: good fixed height for mobile */
     .cb-chart-wrap {
       width: 100% !important;
-      min-height: 320px !important;
+      min-height: 300px !important;
       height: auto !important;
+      border-radius: 10px !important;
     }
     #cb-main-chart {
       width: 100% !important;
-      height: 320px !important;
+      height: 300px !important;
     }
 
-    /* Hide the desktop side-floating toggle on mobile */
-    .panel-toggle-btn { display: none !important; }
+    /* Canvas header stays compact */
+    .cb-canvas-header {
+      flex-wrap: wrap !important;
+      gap: 6px !important;
+      margin-bottom: 8px !important;
+    }
+    .cb-canvas-title { font-size: 14px !important; }
 
-    /* Show mobile tap-to-expand tab */
+    /* Hide the desktop floating side-toggle on mobile */
+    .panel-toggle-btn { display: none !important; }
+    .panel-reopen-pill { display: none !important; }
+
+    /* Show the mobile tap-to-expand tab strip */
     .mobile-panel-tab { display: flex !important; }
 
-    /* Ensure nothing overflows */
-    .cb-controls-title { padding-right: 8px; }
+    /* Watchdog/Cleaner specific */
+    .watchdog-right { overflow-y: auto !important; }
+    .clean-right    { overflow-y: auto !important; }
   }
 
-  /* Mobile panel tab bar — hidden on desktop */
+  /* Mobile panel tab bar — hidden on desktop, visible on mobile */
   .mobile-panel-tab {
-    display: none;
+    display: none;           /* shown only at <=768px via @media */
     width: 100%;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: 12px 16px;
     cursor: pointer;
     user-select: none;
     flex-shrink: 0;
-    background: var(--surface);
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    min-height: 44px;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    active-background: var(--border);
   }
+  .mobile-panel-tab:active { background: var(--border); }
   .mobile-panel-tab-title {
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 700;
     color: var(--ink);
     display: flex;
@@ -1112,9 +1143,11 @@
     gap: 6px;
   }
   .mobile-panel-tab-arrow {
-    font-size: 12px;
-    color: var(--ink-3);
-    transition: transform .25s;
+    font-size: 14px;
+    color: var(--accent);
+    font-weight: 700;
+    transition: transform .3s cubic-bezier(.4,0,.2,1);
+    flex-shrink: 0;
   }
   .mobile-expanded .mobile-panel-tab-arrow {
     transform: rotate(180deg);
@@ -1134,6 +1167,40 @@
     }
     /* Make sure the chart title is readable */
     .cb-canvas-title { font-size: 14px !important; }
+  }
+
+
+  /* ── Mobile FAB: re-open settings panel ── */
+  @media (max-width: 768px) {
+    .cb-canvas-settings-fab {
+      display: flex !important;
+      position: fixed;
+      bottom: 80px;
+      right: 16px;
+      z-index: 50;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 50px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(37,99,235,.4);
+      align-items: center;
+      gap: 6px;
+      transition: opacity .2s, transform .2s;
+    }
+    .cb-canvas-settings-fab:active { transform: scale(.95); }
+    /* Hide FAB when settings panel is open */
+    .mobile-expanded ~ * .cb-canvas-settings-fab,
+    #cb-controls-panel.mobile-expanded ~ .cb-canvas .cb-canvas-settings-fab {
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+  @media (min-width: 769px) {
+    .cb-canvas-settings-fab { display: none !important; }
   }
 
 </style>
@@ -1505,8 +1572,12 @@
         <!-- ── LEFT CONTROLS PANEL ── -->
         <div class="cb-controls" id="cb-controls-panel">
           <!-- Mobile tap-to-expand tab (only visible on mobile) -->
-          <div class="mobile-panel-tab" onclick="toggleMobilePanel('cb-controls')">
-            <span class="mobile-panel-tab-title">⚙️ Chart Settings</span>
+          <div class="mobile-panel-tab" onclick="toggleMobilePanel('cb-controls-panel')" id="cb-mobile-tab">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span>⚙️</span>
+              <span class="mobile-panel-tab-title">Chart Settings</span>
+              <span style="font-size:10px;color:var(--ink-3);font-weight:400">(tap to expand)</span>
+            </div>
             <span class="mobile-panel-tab-arrow">▼</span>
           </div>
           <div class="cb-controls-title" style="display:flex;align-items:center;justify-content:space-between">
@@ -1596,6 +1667,12 @@
 
         <!-- ── RIGHT CHART PANEL ── -->
         <div class="cb-canvas">
+          <!-- Mobile FAB: tap to reopen settings panel -->
+          <button class="cb-canvas-settings-fab" id="cb-settings-fab"
+                  onclick="toggleMobilePanel('cb-controls-panel')"
+                  style="display:none">
+            ⚙️ Settings
+          </button>
           <!-- Panel collapse toggle -->
           <button class="panel-toggle-btn" id="cb-panel-toggle-btn"
                   onclick="togglePanel('cb')" title="Hide/show settings panel">
@@ -1632,8 +1709,12 @@
         <div class="clean-left" id="clean-left-panel">
           <!-- Table selector -->
           <!-- Mobile tap-to-expand tab -->
-          <div class="mobile-panel-tab" onclick="toggleMobilePanel('clean-left-panel')">
-            <span class="mobile-panel-tab-title">🔍 Data Issues & Cleaning</span>
+          <div class="mobile-panel-tab" onclick="toggleMobilePanel('clean-left-panel')" id="clean-mobile-tab">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span>🔍</span>
+              <span class="mobile-panel-tab-title">Issues & Cleaning</span>
+              <span style="font-size:10px;color:var(--ink-3);font-weight:400">(tap to expand)</span>
+            </div>
             <span class="mobile-panel-tab-arrow">▼</span>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px 0;flex-shrink:0">
@@ -1726,8 +1807,12 @@
         <!-- LEFT: Alert list -->
         <div class="watchdog-left" id="watchdog-left-panel">
           <!-- Mobile tap-to-expand tab -->
-          <div class="mobile-panel-tab" onclick="toggleMobilePanel('watchdog-left-panel')">
-            <span class="mobile-panel-tab-title">🔔 Active Alerts</span>
+          <div class="mobile-panel-tab" onclick="toggleMobilePanel('watchdog-left-panel')" id="wd-mobile-tab">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span>🔔</span>
+              <span class="mobile-panel-tab-title">Active Alerts</span>
+              <span style="font-size:10px;color:var(--ink-3);font-weight:400">(tap to expand)</span>
+            </div>
             <span class="mobile-panel-tab-arrow">▼</span>
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 0;flex-shrink:0">
@@ -7363,19 +7448,25 @@ function toggleMobilePanel(panelId) {
 
   const wasExpanded = panel.classList.contains('mobile-expanded');
   panel.classList.toggle('mobile-expanded');
+  const nowExpanded = !wasExpanded;
 
-  // Update the tab arrow text
-  const tab = panel.querySelector('.mobile-panel-tab');
+  // Update arrow indicator
   const arrow = panel.querySelector('.mobile-panel-tab-arrow');
-  if (arrow) arrow.textContent = wasExpanded ? '▼' : '▲';
+  if (arrow) arrow.textContent = nowExpanded ? '▲' : '▼';
 
-  // Resize charts after animation
+  // Chart Builder FAB: show when settings closed, hide when open
+  if (panelId === 'cb-controls-panel') {
+    const fab = document.getElementById('cb-settings-fab');
+    if (fab) fab.style.display = nowExpanded ? 'none' : 'flex';
+  }
+
+  // Resize charts after animation completes
   setTimeout(() => {
     document.querySelectorAll('[id$="-echart"],[id="cb-main-chart"]').forEach(el => {
       const inst = typeof echarts !== 'undefined' ? echarts.getInstanceByDom(el) : null;
       if (inst) inst.resize();
     });
-  }, 360);
+  }, 340);
 }
 
 function _collapseAllMobilePanels() {
@@ -7392,7 +7483,7 @@ function _collapseAllMobilePanels() {
 
 function _expandMobilePanel(panelId) {
   if (window.innerWidth > 768) return;
-  const el = document.getElementById(id);
+  const el = document.getElementById(panelId);  // fixed: was `id` (undefined variable)
   if (!el) return;
   el.classList.add('mobile-expanded');
   const arrow = el.querySelector('.mobile-panel-tab-arrow');
@@ -7406,28 +7497,34 @@ function _initMobilePanels() {
 }
 
 // ── After Build Chart: collapse settings and scroll chart into view ───────────
-// Intercept the REAL cbBuild (defined earlier in the file)
+// ── DOMContentLoaded: wire up all mobile behaviour ───────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // We patch cbBuild after DOM ready to ensure we get the final version
+
+  // ── Patch cbBuild: collapse panel + show chart after building ──
   const _realCbBuild = window.cbBuild;
   if (typeof _realCbBuild === 'function') {
-    window.cbBuild = async function() {
+    window.cbBuild = async function(...args) {
       const btn = document.getElementById('cb-build-btn');
       if (btn) { btn.disabled = true; btn.textContent = '⏳ Building…'; }
       try {
-        await _realCbBuild.call(this, ...arguments);
+        await _realCbBuild.apply(this, args);
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = '▶ Build Chart'; }
       }
+
+      // On mobile: collapse settings panel so chart is fully visible
       if (window.innerWidth <= 768) {
-        // Collapse settings panel
         const panel = document.getElementById('cb-controls-panel');
-        if (panel) {
+        if (panel && panel.classList.contains('mobile-expanded')) {
           panel.classList.remove('mobile-expanded');
           const arrow = panel.querySelector('.mobile-panel-tab-arrow');
           if (arrow) arrow.textContent = '▼';
         }
-        // Wait for collapse animation then resize + scroll
+        // Show the floating "⚙️ Settings" FAB so user can reopen
+        const fab = document.getElementById('cb-settings-fab');
+        if (fab) fab.style.display = 'flex';
+
+        // Wait for collapse, then resize chart + scroll into view
         setTimeout(() => {
           const chartEl = document.getElementById('cb-main-chart');
           if (chartEl) {
@@ -7436,16 +7533,16 @@ document.addEventListener('DOMContentLoaded', () => {
           }
           const wrap = document.getElementById('cb-chart-wrap');
           if (wrap) wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 380);
+        }, 350);
       }
     };
   }
 
-  // ── After Clean Apply: collapse issues panel, scroll results into view ──
+  // ── Patch cleanApply: collapse issues panel after cleaning ──
   const _realCleanApply = window.cleanApply;
   if (typeof _realCleanApply === 'function') {
-    window.cleanApply = async function() {
-      await _realCleanApply.call(this, ...arguments);
+    window.cleanApply = async function(...args) {
+      await _realCleanApply.apply(this, args);
       if (window.innerWidth <= 768) {
         const panel = document.getElementById('clean-left-panel');
         if (panel) {
