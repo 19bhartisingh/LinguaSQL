@@ -160,17 +160,19 @@ LOCAL_PROVIDERS = {"ollama", "huggingface"}
 #  PERSISTENT META DATABASE
 # ─────────────────────────────────────────────────────────
 
-_BASE_DIR    = Path(__file__).parent
-_DB_DIR      = _BASE_DIR / "databases"
-META_DB_PATH = str(_DB_DIR / "linguasql_meta.db")
+# Railway / Render / Fly.io: prefer a writable persistent path if available
+_DATA_DIR = os.environ.get("DATA_DIR") or (
+    "/app/databases" if os.path.isdir("/app") else "databases"
+)
+META_DB_PATH = os.path.join(_DATA_DIR, "linguasql_meta.db")
 
-# Ensure the databases directory always exists (critical for Railway / Fly.io)
-os.makedirs(str(_DB_DIR), exist_ok=True)
-os.makedirs(str(_DB_DIR / "uploads"), exist_ok=True)
+# Ensure the databases directory always exists
+os.makedirs(_DATA_DIR, exist_ok=True)
+os.makedirs(os.path.join(_DATA_DIR, "uploads"), exist_ok=True)
 
 
 def _init_meta_db():
-    os.makedirs(str(_DB_DIR), exist_ok=True)
+    os.makedirs(_DATA_DIR, exist_ok=True)
     conn = sqlite3.connect(META_DB_PATH)
     c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS query_history (
@@ -541,7 +543,11 @@ async def lifespan(app):
     print("\n🚀 LinguaSQL v1.0 starting up...")
     _init_meta_db()
     print("💾 Persistent history database ready")
-    db_files = [str(_DB_DIR / "college.db"), str(_DB_DIR / "ecommerce.db"), str(_DB_DIR / "hospital.db")]
+    db_files = [
+        os.path.join(_DATA_DIR, "college.db"),
+        os.path.join(_DATA_DIR, "ecommerce.db"),
+        os.path.join(_DATA_DIR, "hospital.db"),
+    ]
     if not all(os.path.exists(f) for f in db_files):
         print("📦 Creating sample databases...")
         setup_all_databases()
@@ -582,7 +588,9 @@ app.router.lifespan_context = lifespan
 # ─────────────────────────────────────────────────────────
 
 STATIC_DIR    = Path(__file__).parent / "static"
-FRONTEND_PATH = STATIC_DIR / "index.html"
+# Railway / Render: index.html may sit next to server.py rather than in static/
+_ROOT_HTML    = Path(__file__).parent / "index.html"
+FRONTEND_PATH = STATIC_DIR / "index.html" if (STATIC_DIR / "index.html").exists() else _ROOT_HTML
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -590,19 +598,19 @@ if STATIC_DIR.exists():
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_frontend():
-    if not FRONTEND_PATH.exists():
-        return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
-    return HTMLResponse(content=FRONTEND_PATH.read_text(encoding="utf-8"))
+    if FRONTEND_PATH.exists():
+        return HTMLResponse(content=FRONTEND_PATH.read_text(encoding="utf-8"))
+    # Last-resort: walk up to find index.html
+    for candidate in [Path(__file__).parent / "index.html",
+                      Path("/app/index.html"), Path("/app/static/index.html")]:
+        if candidate.exists():
+            return HTMLResponse(content=candidate.read_text(encoding="utf-8"))
+    return HTMLResponse("<h1>Frontend not found</h1>", status_code=404)
 
 
 # ─────────────────────────────────────────────────────────
 #  HEALTH
 # ─────────────────────────────────────────────────────────
-
-@app.get("/health")
-async def health_alias():
-    return {"status": "ok"}
-
 
 @app.get("/api/health")
 async def health_check():
@@ -780,6 +788,16 @@ async def delete_connection(conn_name: str):
     return {"success": True, "deleted": conn_name}
 
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint used by Fly.io, Render, Railway, etc."""
+    return {"status": "ok", "app": "LinguaSQL", "version": "1.0"}
+
+
+@app.get("/health")
+async def health_check():
+    """Health check for Railway/Fly.io/Render"""
+    return {"status": "ok", "app": "LinguaSQL", "version": "1.0"}
 
 
 @app.get("/api/databases")
@@ -1239,7 +1257,7 @@ async def clean_apply(req: CleanApplyRequest):
     if req.save_as.strip():
         from file_importer import clean_column_name
         base    = clean_column_name(req.save_as.strip()) or "cleaned"
-        path    = str(_DB_DIR / "uploads" / f"{base}.db")
+        path    = os.path.join(_DATA_DIR, "uploads", f"{base}.db")
         df_to_cleaned_sqlite(cleaned_df, req.table_name, path)
         display = f"📄 {base}"
         register_database(display, path)
@@ -1904,7 +1922,7 @@ async def schema_detective(req: SchemaDetectiveRequest):
     return {"db_name": req.db_name, **result}
 
 
-
+class ExportQueryPdfRequest(BaseModel):
     title:     str
     subtitle:  str          = ""
     question:  str          = ""
