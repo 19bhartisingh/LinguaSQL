@@ -213,7 +213,7 @@
   .loading-dot, .skeleton, @keyframes, [class*="anim"] { transition: none !important; }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.5; overflow-x: hidden; }
+  html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--ink); font-size: 14px; line-height: 1.5; }
   button { font-family: inherit; cursor: pointer; border: none; outline: none; }
   input, textarea, select { font-family: inherit; outline: none; }
   a { color: var(--accent); text-decoration: none; }
@@ -267,10 +267,8 @@
     opacity: 0; visibility: hidden; pointer-events: none;
   }
   html.sidebar-collapsed .sidebar-expand-pill { display: flex; }
-  /* Push topnav content right so it doesn't sit behind the pill — desktop only */
-  @media (min-width: 769px) {
-    html.sidebar-collapsed .topnav { padding-left: 130px; }
-  }
+  /* Push topnav content right so it doesn't sit behind the pill */
+  html.sidebar-collapsed .topnav { padding-left: 130px; transition: padding-left .25s cubic-bezier(.4,0,.2,1); }
   .topnav { transition: padding-left .25s cubic-bezier(.4,0,.2,1); }
 
   /* ── SIDEBAR ── */
@@ -365,7 +363,7 @@
   .schema-col-badge.fk { background: var(--violet-bg); color: var(--violet); }
 
   /* ── MAIN ── */
-  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
   /* ── TOP NAV ── */
   .topnav {
@@ -396,7 +394,7 @@
   .badge-violet{ background: var(--violet-bg); color: var(--violet); }
 
   /* ── PAGE PANELS ── */
-  .page { flex: 1; overflow: hidden; display: none; flex-direction: column; min-height: 0; }
+  .page { flex: 1; overflow: hidden; display: none; flex-direction: column; }
   .page.active { display: flex; }
 
   /* ── QUERY PAGE ── */
@@ -472,7 +470,7 @@
   /* Data table */
   .data-table-wrap {
     overflow: auto;
-    max-height: min(calc(100vh - 340px), 60vh);  /* clamp so it never clips on short screens */
+    max-height: calc(100vh - 340px);  /* dynamic — scrolls within page, never clips */
     min-height: 120px;
     border-radius: 8px;
     border: 1px solid var(--border);
@@ -884,219 +882,6 @@
   .w-full { width: 100%; }
   .hidden { display: none !important; }
   .divider { height: 1px; background: var(--border); margin: 8px 0; }
-
-  /* ════════════════════════════════════════════════════════
-     RESPONSIVE DESIGN — Full mobile / tablet / desktop
-     Breakpoints:
-       <= 480px  = xs  (phones portrait)
-       <= 768px  = sm  (phones landscape, small tablets)
-       <= 1024px = md  (tablets, small laptops)
-     ════════════════════════════════════════════════════════ */
-
-  /* ── TABLET (<=1024px) ─────────────────────────────────── */
-  @media (max-width: 1024px) {
-    :root { --sidebar-w: 220px; }
-    .tab-btn { padding: 0 12px; font-size: 12.5px; }
-    .dashboard-grid { grid-template-columns: 1fr; }
-    .dash-panel.size-full { grid-column: 1; }
-    .watchdog-layout { flex-direction: column; }
-    .watchdog-left   { width: 100%; max-height: 320px; border-right: none; border-bottom: 1px solid var(--border); }
-    .clean-layout    { flex-direction: column; }
-    .clean-left      { width: 100%; max-height: 320px; border-right: none; border-bottom: 1px solid var(--border); }
-    .cb-layout   { flex-direction: column; }
-    .cb-controls { width: 100%; border-right: none; border-bottom: 1px solid var(--border); max-height: 260px; overflow-y: auto; }
-    .modal-body         { flex-direction: column; }
-    .modal-divider      { width: 100%; height: 1px; margin: 0; }
-    .schedule-form-col  { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
-    .profile-grid { grid-template-columns: 1fr; }
-    .dash-hero { padding: 20px 22px; }
-    .dash-hero-title { font-size: 22px; }
-    .kpi-row { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-  }
-
-  /* ── MOBILE (<=768px) ──────────────────────────────────── */
-  @media (max-width: 768px) {
-    :root { --sidebar-w: 0px; }
-
-    /* Sidebar: off-canvas drawer */
-    .sidebar {
-      position: fixed; top: 0; left: 0; height: 100%;
-      width: 280px !important; min-width: 0 !important;
-      z-index: 300;
-      transform: translateX(-100%);
-      transition: transform .25s cubic-bezier(.4,0,.2,1);
-      box-shadow: var(--shadow-lg);
-    }
-    html.sidebar-open .sidebar { transform: translateX(0); }
-    html.sidebar-open::after {
-      content: '';
-      position: fixed; inset: 0; z-index: 299;
-      background: rgba(0,0,0,.4);
-    }
-    html.sidebar-collapsed .sidebar {
-      width: 280px !important;
-      transform: translateX(-100%);
-    }
-    html.sidebar-collapsed.sidebar-open .sidebar { transform: translateX(0); }
-    .sidebar-expand-pill { display: flex !important; height: 48px; }
-    html.sidebar-collapsed .topnav { padding-left: 0; }
-    .main { width: 100%; }
-
-    /* Topnav */
-    .topnav {
-      padding: 0 8px 0 130px;
-      overflow-x: auto; gap: 0;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-    }
-    .topnav::-webkit-scrollbar { display: none; }
-    .tab-btn { padding: 0 10px; font-size: 12px; white-space: nowrap; flex-shrink: 0; }
-    .topnav-right { flex-shrink: 0; gap: 6px; }
-
-    /* Conversation */
-    .convo-area { padding: 12px 14px; gap: 12px; }
-
-    /* Query bar */
-    .query-bar { padding: 10px 12px; }
-    .hint-chip { font-size: 11px; padding: 3px 8px; }
-
-    /* Result card */
-    .result-card-header { padding: 10px 12px; }
-    .result-tabs  { padding: 0 10px; }
-    .result-tab   { padding: 7px 10px; font-size: 12px; }
-    .result-panel { padding: 12px; }
-    .data-table-wrap { max-height: calc(100vh - 300px); }
-    thead th, tbody td { font-size: 11.5px; padding: 7px 9px; }
-
-    /* Charts */
-    .echart-wrap  { height: 260px; }
-    .dash-echart  { height: 220px; }
-    .dash-echart.tall { height: 260px; }
-
-    /* Dashboard */
-    .page-inner { padding: 14px; }
-    .page-title { font-size: 20px; }
-    .page-sub   { font-size: 12px; margin-bottom: 14px; }
-    .goal-input-card { padding: 14px; margin-bottom: 16px; }
-    .goal-input-row  { flex-direction: column; gap: 8px; }
-    .btn-primary { width: 100%; }
-    .goal-chip { font-size: 11px; padding: 5px 10px; }
-
-    /* Hero */
-    .dash-hero { padding: 16px; margin-bottom: 16px; }
-    .dash-hero-title { font-size: 18px; }
-    .dash-hero-sub   { font-size: 12px; }
-    .dash-hero-meta  { gap: 12px; }
-
-    /* KPI */
-    .kpi-row { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 16px; }
-    .kpi-card   { padding: 14px; }
-    .kpi-value  { font-size: 24px; }
-    .kpi-icon   { font-size: 18px; margin-bottom: 8px; }
-    .kpi-bg-icon { font-size: 38px; }
-
-    /* Dashboard grid */
-    .dashboard-grid { grid-template-columns: 1fr; gap: 12px; }
-    .dash-panel.size-full { grid-column: 1; }
-    .dash-panel-header { padding: 10px 14px 8px; }
-    .dash-panel-body   { padding: 10px; }
-    .dash-table-wrap   { max-height: 220px; }
-
-    /* Profile */
-    .profile-grid { grid-template-columns: 1fr; }
-
-    /* History */
-    .history-item { padding: 12px; gap: 10px; }
-    .hist-question { font-size: 12.5px; }
-    .hist-actions { flex-direction: column; gap: 4px; }
-
-    /* Watchdog */
-    .watchdog-layout { flex-direction: column; height: auto; }
-    .watchdog-left   { width: 100%; max-height: 280px; border-right: none; border-bottom: 1px solid var(--border); }
-    .watchdog-right  { padding: 14px; }
-    .watchdog-form   { padding: 14px; }
-    .wf-row  { flex-direction: column; gap: 8px; }
-    .wf-group { min-width: 100%; }
-
-    /* Cleaner */
-    .clean-layout { flex-direction: column; height: auto; }
-    .clean-left   { width: 100%; max-height: 280px; border-right: none; border-bottom: 1px solid var(--border); }
-    .clean-right  { padding: 14px; }
-
-    /* Chart builder */
-    .cb-layout   { flex-direction: column; height: auto; }
-    .cb-controls { width: 100%; max-height: 240px; border-right: none; border-bottom: 1px solid var(--border); padding: 12px; }
-    .cb-canvas   { padding: 12px; }
-    .cb-chart-wrap { min-height: 300px; }
-    #cb-main-chart { height: 300px; }
-
-    /* Lineage */
-    .lineage-page { padding: 12px; gap: 10px; }
-    .lineage-graph-wrap { min-height: 280px; }
-    #lineage-chart { min-height: 280px; }
-
-    /* Modals: bottom sheet */
-    .modal-backdrop { padding: 0; align-items: flex-end; }
-    .modal-box { border-radius: 18px 18px 0 0; max-width: 100%; max-height: 92vh; }
-    .modal-header { padding: 16px 18px 12px; }
-    .modal-title  { font-size: 17px; }
-    .modal-body         { flex-direction: column; }
-    .modal-divider      { width: 100%; height: 1px; }
-    .schedule-form-col  { width: 100%; max-height: 55vh; }
-    .schedule-list-col  { max-height: 35vh; }
-
-    /* Auth modal */
-    .auth-modal-box { border-radius: 18px 18px 0 0; max-width: 100%; }
-    .auth-modal-header { padding: 20px 20px 16px; }
-    .auth-body { padding: 18px; }
-
-    /* Toast */
-    .toast { left: 12px; right: 12px; bottom: 12px; width: auto; font-size: 12.5px; }
-
-    /* SQL block */
-    .sql-block { font-size: 11px; padding: 12px; }
-
-    /* Insights */
-    .insight-card { padding: 10px 12px; gap: 10px; }
-    .insight-icon { width: 28px; height: 28px; font-size: 16px; }
-    .insight-text { font-size: 12.5px; }
-
-    /* Steps */
-    .step-item { padding: 10px; gap: 10px; }
-    .step-text { font-size: 12.5px; }
-
-    /* Empty state */
-    .empty-state { padding: 32px 16px; }
-    .empty-icon  { font-size: 32px; }
-    .empty-title { font-size: 16px; }
-
-    /* Detective */
-    .detective-hero { padding: 14px 16px; gap: 10px; }
-    .detective-industry-badge { width: 40px; height: 40px; font-size: 22px; }
-    .detective-industry { font-size: 16px; }
-    .detective-questions, .detective-goals { padding: 12px 14px; }
-  }
-
-  /* ── SMALL PHONES (<=480px) ────────────────────────────── */
-  @media (max-width: 480px) {
-    .kpi-row { grid-template-columns: 1fr 1fr; gap: 8px; }
-    .kpi-card  { padding: 12px; }
-    .kpi-value { font-size: 20px; }
-    .topnav { padding-left: 120px; }
-    /* Tab: icon-only */
-    .tab-btn { padding: 0 8px; font-size: 0; gap: 0; }
-    .tab-btn svg { width: 16px; height: 16px; }
-    .hint-chip { font-size: 10.5px; padding: 3px 7px; }
-    .cb-chart-type-grid { grid-template-columns: repeat(3, 1fr); }
-    .result-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .result-tab  { white-space: nowrap; flex-shrink: 0; }
-    .form-row { flex-direction: column; }
-    .wf-row   { flex-direction: column; }
-    .pivot-controls { flex-direction: column; align-items: stretch; }
-    .freq-pills { justify-content: flex-start; }
-    .share-bar  { flex-direction: column; gap: 6px; align-items: stretch; }
-    .share-link { font-size: 10px; }
-  }
 </style>
 </head>
 <body>
@@ -1465,7 +1250,14 @@
 
         <!-- ── LEFT CONTROLS PANEL ── -->
         <div class="cb-controls">
-          <div class="cb-controls-title">⚙️ Chart Settings</div>
+          <div class="cb-controls-title">
+            ⚙️ Chart Settings
+            <button class="cb-panel-toggle" onclick="cbTogglePanel()" title="Hide settings panel" id="cb-panel-toggle-btn">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <polyline points="10 4 6 8 10 12"/>
+              </svg>
+            </button>
+          </div>
 
           <div class="cb-group">
             <label class="cb-label">Table</label>
@@ -1542,6 +1334,12 @@
         <!-- ── RIGHT CHART PANEL ── -->
         <div class="cb-canvas">
           <div class="cb-canvas-header" id="cb-canvas-header" style="display:none">
+            <button class="cb-show-panel-btn" onclick="cbTogglePanel()" id="cb-show-panel-btn" title="Show settings panel">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <polyline points="6 4 10 8 6 12"/>
+              </svg>
+              Settings
+            </button>
             <div class="cb-canvas-title" id="cb-canvas-title"></div>
             <div style="display:flex;gap:8px;margin-left:auto">
               <button class="btn-sm btn-ghost" id="cb-export-btn" onclick="cbExportPng()">⬇ PNG</button>
@@ -2301,14 +2099,42 @@ html.dark .quick-send-card { background: rgba(37,99,235,.1); }
 
 /* ── CHART BUILDER ── */
 .cb-layout {
-  display: flex; height: 100%; overflow: hidden;
+  display: flex; height: 100%; overflow: hidden; position: relative;
 }
 .cb-controls {
   width: 264px; flex-shrink: 0; overflow-y: auto;
   background: var(--surface); border-right: 1px solid var(--border);
   padding: 16px 14px; display: flex; flex-direction: column; gap: 14px;
+  transition: width .25s cubic-bezier(.4,0,.2,1), padding .25s cubic-bezier(.4,0,.2,1),
+              opacity .2s, border-color .25s;
 }
-.cb-controls-title { font-size: 13px; font-weight: 700; color: var(--ink); }
+.cb-controls.collapsed {
+  width: 0; padding: 0; opacity: 0; pointer-events: none;
+  border-color: transparent; overflow: hidden;
+}
+.cb-controls-title {
+  font-size: 13px; font-weight: 700; color: var(--ink);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.cb-panel-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--ink-2); cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.cb-panel-toggle:hover { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
+.cb-panel-toggle svg { width: 13px; height: 13px; transition: transform .25s; }
+.cb-canvas-header { display: flex; align-items: center; gap: 8px; }
+.cb-show-panel-btn {
+  display: none; align-items: center; gap: 5px; padding: 4px 10px;
+  border-radius: 6px; border: 1px solid var(--border); background: var(--surface-2);
+  color: var(--ink-2); font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.cb-show-panel-btn:hover { background: var(--accent-bg); color: var(--accent); }
+.cb-show-panel-btn svg { width: 12px; height: 12px; }
+.cb-controls.collapsed ~ .cb-canvas .cb-show-panel-btn { display: inline-flex; }
 .cb-canvas {
   flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 20px;
 }
@@ -2429,7 +2255,7 @@ html.dark .quick-send-card { background: rgba(37,99,235,.1); }
 html.dark .reasoning-step { background: rgba(124,58,237,.12); }
 
 /* ── Feature 2: Watchdog Alerts ── */
-.watchdog-layout { display:flex; height:100%; min-height:0; overflow:hidden; }
+.watchdog-layout { display:flex; height:100%; overflow:hidden; }
 .watchdog-left {
   width: 340px; flex-shrink:0; overflow-y:auto;
   border-right: 1px solid var(--border); background: var(--surface);
@@ -2532,7 +2358,7 @@ html.dark .detective-hero { background:linear-gradient(135deg,rgba(37,99,235,.12
 
 /* ── CLEAN ── (placeholder to keep marker) */
 /* ── DATA CLEANING ── */
-.clean-layout { display:flex; height:100%; min-height:0; overflow:hidden; }
+.clean-layout { display:flex; height:100%; overflow:hidden; }
 .clean-left {
   width: 360px; flex-shrink:0; overflow-y:auto;
   background: var(--surface); border-right: 1px solid var(--border);
@@ -6001,7 +5827,21 @@ const cb = {
 
 // ── Initialise on tab open ──────────────────────────────
 
-function cbOnTabOpen() {
+// ── Chart Builder Panel Toggle ──────────────────────────────────────
+  function cbTogglePanel() {
+    const panel = document.querySelector('.cb-controls');
+    const btn   = document.getElementById('cb-panel-toggle-btn');
+    const isCollapsed = panel.classList.toggle('collapsed');
+    if (btn) {
+      btn.querySelector('polyline').setAttribute('points', isCollapsed ? '6 4 10 8 6 12' : '10 4 6 8 10 12');
+      btn.title = isCollapsed ? 'Show settings panel' : 'Hide settings panel';
+    }
+    if (window._cbChart) {
+      setTimeout(() => window._cbChart.resize(), 280);
+    }
+  }
+
+  function cbOnTabOpen() {
   _cbRenderTypeGrid();
   _cbRenderThemeGrid();
   cbSyncDatabase();
@@ -7100,77 +6940,34 @@ function useDetectiveQuestion(q) {
 init();
 initDashboardGoalChips();
 
-// ── Sidebar toggle — desktop collapse vs mobile drawer ──────
-function isMobile() { return window.innerWidth <= 768; }
-
+// ── Sidebar collapse / expand ─────────────────────────────
 function toggleSidebar() {
-  const html = document.documentElement;
-  if (isMobile()) {
-    // Mobile: slide off-canvas drawer in/out
-    const opening = !html.classList.contains('sidebar-open');
-    html.classList.toggle('sidebar-open', opening);
-    document.body.style.overflow = opening ? 'hidden' : '';
-  } else {
-    // Desktop: collapse/expand the sidebar rail
-    const collapsed = html.classList.toggle('sidebar-collapsed');
-    localStorage.setItem('qm_sidebar_collapsed', collapsed ? '1' : '0');
-    const chev = document.getElementById('sidebar-chevron-left');
-    if (chev) chev.setAttribute('points', collapsed ? '19 8 21 12 19 16' : '5 8 3 12 5 16');
+  const collapsed = document.documentElement.classList.toggle('sidebar-collapsed');
+  localStorage.setItem('qm_sidebar_collapsed', collapsed ? '1' : '0');
+  // Flip the chevron icon direction
+  const chev = document.getElementById('sidebar-chevron-left');
+  if (chev) {
+    chev.setAttribute('points', collapsed ? '19 8 21 12 19 16' : '5 8 3 12 5 16');
   }
-  // Resize ECharts instances after the CSS transition finishes
+  // Resize any active ECharts instances after transition
   setTimeout(() => {
-    document.querySelectorAll('[id$="-echart"],[id="cb-main-chart"],[id="lineage-chart"]')
+    document.querySelectorAll('[id$="-echart"],[id="cb-main-chart"],[id="lineage-chart"],[id="lineage-chart"]')
       .forEach(el => { try { echarts.getInstanceByDom(el)?.resize(); } catch(e){} });
   }, 270);
 }
 
-// Close mobile drawer when user taps the dim overlay behind it
-document.addEventListener('click', function(e) {
-  if (!isMobile()) return;
-  if (!document.documentElement.classList.contains('sidebar-open')) return;
-  const sidebar = document.querySelector('.sidebar');
-  if (sidebar && !sidebar.contains(e.target) && !e.target.closest('.sidebar-expand-pill')) {
-    document.documentElement.classList.remove('sidebar-open');
-    document.body.style.overflow = '';
-  }
-});
-
-// Auto-close drawer when a sidebar nav item is tapped on mobile
-document.querySelectorAll('.sidebar-nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (isMobile()) {
-      document.documentElement.classList.remove('sidebar-open');
-      document.body.style.overflow = '';
-    }
-  });
-});
-
-// On window resize, clean up stale drawer/collapse state
-window.addEventListener('resize', () => {
-  const html = document.documentElement;
-  if (!isMobile()) {
-    html.classList.remove('sidebar-open');
-    document.body.style.overflow = '';
-    if (localStorage.getItem('qm_sidebar_collapsed') === '1') {
-      html.classList.add('sidebar-collapsed');
-    }
-  } else {
-    html.classList.remove('sidebar-collapsed');
-  }
-});
-
-// Restore saved collapse state on desktop page load
-if (!isMobile() && localStorage.getItem('qm_sidebar_collapsed') === '1') {
+// Restore saved sidebar state
+if (localStorage.getItem('qm_sidebar_collapsed') === '1') {
   document.documentElement.classList.add('sidebar-collapsed');
   const chev = document.getElementById('sidebar-chevron-left');
   if (chev) chev.setAttribute('points', '19 8 21 12 19 16');
 }
 
-// Keyboard shortcut Cmd+B / Ctrl+B (desktop only)
+// Keyboard shortcut: Cmd+B / Ctrl+B
 document.addEventListener('keydown', e => {
   if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
     e.preventDefault();
-    if (!isMobile()) toggleSidebar();
+    toggleSidebar();
   }
 });
 

@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ["freetds", "postgresql", "gcc", "pkg-config", "openssl"]
+nixPkgs = ["freetds", "postgresql", "gcc", "pkg-config", "libffi", "openssl"]
 
 [phases.install]
 cmds = ["pip install -r requirements.txt"]

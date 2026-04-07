@@ -160,15 +160,17 @@ LOCAL_PROVIDERS = {"ollama", "huggingface"}
 #  PERSISTENT META DATABASE
 # ─────────────────────────────────────────────────────────
 
-META_DB_PATH = "databases/linguasql_meta.db"
+_BASE_DIR    = Path(__file__).parent
+_DB_DIR      = _BASE_DIR / "databases"
+META_DB_PATH = str(_DB_DIR / "linguasql_meta.db")
 
-# Ensure the databases directory always exists (critical for Fly.io volume mounts)
-os.makedirs("databases", exist_ok=True)
-os.makedirs("databases/uploads", exist_ok=True)
+# Ensure the databases directory always exists (critical for Railway / Fly.io)
+os.makedirs(str(_DB_DIR), exist_ok=True)
+os.makedirs(str(_DB_DIR / "uploads"), exist_ok=True)
 
 
 def _init_meta_db():
-    os.makedirs("databases", exist_ok=True)
+    os.makedirs(str(_DB_DIR), exist_ok=True)
     conn = sqlite3.connect(META_DB_PATH)
     c = conn.cursor()
     c.execute("""CREATE TABLE IF NOT EXISTS query_history (
@@ -341,26 +343,6 @@ def _get_shared_result(share_id: str) -> Optional[Dict]:
     except Exception:
         pass
     return None
-
-
-# ─────────────────────────────────────────────────────────
-#  HELPERS
-# ─────────────────────────────────────────────────────────
-
-def _make_serialisable(rows: list) -> list:
-    """Convert numpy types to plain Python types for JSON serialisation."""
-    import numpy as np
-    clean = []
-    for row in rows:
-        clean_row = {}
-        for k, v in row.items():
-            if isinstance(v, np.integer):    v = int(v)
-            elif isinstance(v, np.floating): v = None if np.isnan(v) else float(v)
-            elif isinstance(v, np.bool_):    v = bool(v)
-            elif isinstance(v, float) and v != v: v = None
-            clean_row[k] = v
-        clean.append(clean_row)
-    return clean
 
 
 # ─────────────────────────────────────────────────────────
@@ -557,65 +539,40 @@ _schedulers: Dict[str, Any] = {
 async def lifespan(app):
     # ── STARTUP ──────────────────────────────────────────
     print("\n🚀 LinguaSQL v1.0 starting up...")
+    _init_meta_db()
+    print("💾 Persistent history database ready")
+    db_files = [str(_DB_DIR / "college.db"), str(_DB_DIR / "ecommerce.db"), str(_DB_DIR / "hospital.db")]
+    if not all(os.path.exists(f) for f in db_files):
+        print("📦 Creating sample databases...")
+        setup_all_databases()
+    n = reload_uploaded_databases()
+    if n:
+        print(f"📂 Restored {n} uploaded database(s)")
+    _reload_external_connections()
 
-    try:
-        _init_meta_db()
-        print("💾 Persistent history database ready")
-    except Exception as e:
-        print(f"⚠️  Meta DB init warning (non-fatal): {e}")
+    _schedulers["report"] = ReportScheduler(META_DB_PATH, _execute_report)
+    _schedulers["report"].start()
 
-    try:
-        db_files = ["databases/college.db", "databases/ecommerce.db", "databases/hospital.db"]
-        if not all(os.path.exists(f) for f in db_files):
-            print("📦 Creating sample databases...")
-            setup_all_databases()
-    except Exception as e:
-        print(f"⚠️  Sample DB setup warning (non-fatal): {e}")
-
-    try:
-        n = reload_uploaded_databases()
-        if n:
-            print(f"📂 Restored {n} uploaded database(s)")
-    except Exception as e:
-        print(f"⚠️  Uploaded DB reload warning (non-fatal): {e}")
-
-    try:
-        _reload_external_connections()
-    except Exception as e:
-        print(f"⚠️  External connections reload warning (non-fatal): {e}")
-
-    try:
-        _schedulers["report"] = ReportScheduler(META_DB_PATH, _execute_report)
-        _schedulers["report"].start()
-    except Exception as e:
-        print(f"⚠️  Report scheduler failed to start (non-fatal): {e}")
-
-    try:
-        _schedulers["watchdog"] = WatchdogScheduler(
-            meta_db_path     = META_DB_PATH,
-            execute_query_fn = execute_query,
-            decrypt_key_fn   = decrypt_key,
-            send_email_fn    = send_email_report,
-            build_email_fn   = build_html_email,
-            adapt_sql_fn     = _adapt_sql_for_dialect,
-        )
-        _schedulers["watchdog"].start()
-    except Exception as e:
-        print(f"⚠️  Watchdog scheduler failed to start (non-fatal): {e}")
+    _schedulers["watchdog"] = WatchdogScheduler(
+        meta_db_path     = META_DB_PATH,
+        execute_query_fn = execute_query,
+        decrypt_key_fn   = decrypt_key,
+        send_email_fn    = send_email_report,
+        build_email_fn   = build_html_email,
+        adapt_sql_fn     = _adapt_sql_for_dialect,
+    )
+    _schedulers["watchdog"].start()
 
     print(f"🔐 Encryption: {'Fernet AES-256' if CRYPTO_AVAILABLE else 'base64'}")
     print(f"📧 SMTP: {'configured' if get_smtp_configured() else 'not set — add SMTP_HOST to env'}")
-    print("✅ Ready — server is live\n")
+    print("✅ Ready\n")
 
     yield   # application runs here
 
     # ── SHUTDOWN ─────────────────────────────────────────
-    for name, s in _schedulers.items():
-        try:
-            if s:
-                s.stop()
-        except Exception as e:
-            print(f"⚠️  Scheduler '{name}' stop error: {e}")
+    for s in _schedulers.values():
+        if s:
+            s.stop()
 
 
 app.router.lifespan_context = lifespan
@@ -642,33 +599,10 @@ async def serve_frontend():
 #  HEALTH
 # ─────────────────────────────────────────────────────────
 
+@app.get("/health")
+async def health_alias():
+    return {"status": "ok"}
 
-@app.get("/api/server-config")
-async def get_server_config():
-    """
-    Return which AI providers have keys pre-configured on the server.
-    The frontend uses this to hide the API key input for those providers.
-    """
-    import os
-    configured = {}
-    env_map = {
-        "gemini": "GEMINI_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "groq":   "GROQ_API_KEY",
-    }
-    for provider, env_var in env_map.items():
-        key = os.environ.get(env_var, "").strip()
-        configured[provider] = bool(key)
-
-    # Auto-detect best provider (first one that has a key)
-    priority = ["gemini", "groq", "openai"]
-    default_provider = next((p for p in priority if configured.get(p)), None)
-
-    return {
-        "server_keys_configured": configured,
-        "any_key_configured":     any(configured.values()),
-        "default_provider":       default_provider,
-    }
 
 @app.get("/api/health")
 async def health_check():
@@ -846,13 +780,6 @@ async def delete_connection(conn_name: str):
     return {"success": True, "deleted": conn_name}
 
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint used by Fly.io, Render, Railway, etc."""
-    return {"status": "ok", "app": "LinguaSQL", "version": "1.0"}
-
-
-
 
 
 @app.get("/api/databases")
@@ -914,8 +841,8 @@ async def run_natural_language_query(req: QueryRequest,
                                      authorization: Optional[str] = Header(None)):
     if not req.question.strip():
         raise HTTPException(400, "Question cannot be empty")
-    # API key is optional when the server has a pre-configured key in .env
-    # The nl_to_sql layer resolves env-keys automatically via _resolve_key()
+    if req.provider not in LOCAL_PROVIDERS and not req.api_key.strip():
+        raise HTTPException(400, f"API key required for '{req.provider}'")
 
     # Resolve current user (None = anonymous)
     current_user = get_current_user(authorization, META_DB_PATH)
@@ -1312,7 +1239,7 @@ async def clean_apply(req: CleanApplyRequest):
     if req.save_as.strip():
         from file_importer import clean_column_name
         base    = clean_column_name(req.save_as.strip()) or "cleaned"
-        path    = f"databases/uploads/{base}.db"
+        path    = str(_DB_DIR / "uploads" / f"{base}.db")
         df_to_cleaned_sqlite(cleaned_df, req.table_name, path)
         display = f"📄 {base}"
         register_database(display, path)
@@ -1977,7 +1904,7 @@ async def schema_detective(req: SchemaDetectiveRequest):
     return {"db_name": req.db_name, **result}
 
 
-class ExportQueryPdfRequest(BaseModel):
+
     title:     str
     subtitle:  str          = ""
     question:  str          = ""
@@ -2284,7 +2211,8 @@ async def send_report_now(req: SendNowRequest):
         raise HTTPException(400, "At least one recipient email is required")
     if not req.question.strip():
         raise HTTPException(400, "Question is required")
-    # API key optional — server env vars are used as fallback
+    if req.provider not in ("ollama",) and not req.api_key.strip():
+        raise HTTPException(400, f"API key required for provider '{req.provider}'")
 
     # Build a synthetic report dict and reuse _execute_report
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -2313,15 +2241,6 @@ async def send_report_now(req: SendNowRequest):
 
 
 
-
-
-
-class ShareRequest(BaseModel):
-    question: str
-    sql:      str
-    columns:  List[str]
-    rows:     List[Dict]
-    db_name:  str
 
 
 @app.post("/api/share")
@@ -2439,11 +2358,9 @@ if __name__ == "__main__":
     print("=" * 54)
     uvicorn.run(
         "server:app",
-        host               = "0.0.0.0",
-        port               = port,
-        reload             = False,
-        log_level          = "warning" if is_prod else "info",
-        access_log         = not is_prod,
-        workers            = 1,
-        timeout_keep_alive = 75,
+        host      = "0.0.0.0",
+        port      = port,
+        reload    = False,        # always off in production
+        log_level = "info",
+        workers   = 1,            # single worker (SQLite not thread-safe with multiple)
     )
