@@ -2951,20 +2951,11 @@ const state = {
 //  INIT
 // ════════════════════════════════════════════════════════
 async function init() {
-  // ── Default API keys (used when user has not saved their own) ──────────────
-  const DEFAULT_API_KEYS = {
-    groq:   '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',  // shared Groq key
-    gemini: '',
-    openai: '',
-  };
-
   // Restore saved API keys and provider
   try {
     const saved = JSON.parse(localStorage.getItem('qm_api_keys') || '{}');
-    // Merge: user's saved keys take priority; fall back to defaults for missing ones
-    state.apiKeys = Object.assign({}, DEFAULT_API_KEYS, saved);
-    // Default to groq since we provide a key for it
-    const prov = localStorage.getItem('qm_provider') || 'groq';
+    state.apiKeys = saved;
+    const prov = localStorage.getItem('qm_provider') || 'gemini';
     const provSelect = document.getElementById('provider-select');
     if (provSelect) provSelect.value = prov;
     state.provider = prov;
