@@ -1078,40 +1078,40 @@
         <!-- Provider selector — always visible -->
         <div class="select-wrap">
           <select id="provider-select" onchange="onProviderChange()">
-            <option value="groq">Groq (LLaMA 3) — Free</option>
+            <option value="groq">Groq / LLaMA 3 (default)</option>
             <option value="gemini">Gemini (Google)</option>
             <option value="openai">OpenAI GPT</option>
             <option value="ollama">Ollama (Local)</option>
           </select>
         </div>
 
-        <!-- API key input — always visible -->
+        <!-- API key input — always visible; placeholder changes per provider -->
         <div class="api-key-wrap" id="api-key-wrap">
           <input class="api-key-input" id="api-key-input" type="password"
-                 placeholder="Your API key (optional)…"
-                 title="Leave blank to use the default shared key" />
+                 placeholder="Your API key (optional — default active)"
+                 title="Leave blank to use the built-in shared key" />
           <button class="btn-sm" onclick="saveApiKey()">Save</button>
         </div>
 
-        <!-- Hint: shown when no user key entered — tells them the default is active -->
-        <div id="default-key-notice" style="font-size:11px;padding:5px 9px;border-radius:7px;
+        <!-- Notice: shown when no user key — server key is active -->
+        <div id="default-key-notice" style="font-size:11px;padding:6px 9px;border-radius:7px;
              background:var(--green-bg,#f0fdf4);color:var(--green,#16a34a);
-             border:1px solid rgba(22,163,74,.25);line-height:1.5;display:none;">
-          ✅ Using default shared key — works out of the box.<br>
-          <span style="opacity:.8">Enter your own key above for higher limits.</span>
+             border:1px solid rgba(22,163,74,.25);line-height:1.55;display:none;">
+          ✅ Ready — using built-in API key.<br>
+          <span style="opacity:.8">Optionally paste your own key above for higher limits.</span>
         </div>
 
-        <!-- Hint: shown after user saves their own key -->
-        <div id="user-key-notice" style="font-size:11px;padding:5px 9px;border-radius:7px;
+        <!-- Notice: shown when user has saved their own key -->
+        <div id="user-key-notice" style="font-size:11px;padding:6px 9px;border-radius:7px;
              background:var(--accent-bg);color:var(--accent);
-             border:1px solid rgba(99,102,241,.25);line-height:1.5;display:none;">
+             border:1px solid rgba(99,102,241,.25);line-height:1.55;display:none;">
           🔑 Using your personal API key.
           <button onclick="clearApiKey()" style="background:none;border:none;
             color:var(--accent);cursor:pointer;text-decoration:underline;
-            font-size:11px;padding:0;margin-left:4px;">Clear</button>
+            font-size:11px;padding:0;margin-left:4px;">Clear &amp; use default</button>
         </div>
 
-        <!-- Get-key links per provider -->
+        <!-- Per-provider get-key link -->
         <div id="provider-key-links" style="font-size:10.5px;color:var(--ink-3);line-height:1.6;"></div>
 
         <div id="provider-status-wrap" style="display:none"></div>
@@ -2981,6 +2981,8 @@ async function init() {
     // Show masked key if user has one saved
     const apiInput = document.getElementById('api-key-input');
     if (apiInput) apiInput.value = state.apiKey ? '••••••••' : '';
+    // Show notices immediately — will refresh again once server responds
+    _updateKeyUI();
   } catch(e) {}
 
   // Restore JWT session
@@ -3245,16 +3247,14 @@ async function loadProviderStatus() {
     const d = await r.json();
     state.serverKeys = d.server_keys || {};
 
-    // If the user has no saved provider preference, auto-select the
-    // server's preferred one (usually groq since GROQ_API_KEY is set)
-    const preferred = d.preferred_provider;
+    // Auto-select the server's preferred provider only on very first visit
+    const preferred   = d.preferred_provider || 'groq';
     const hasSavedPref = !!localStorage.getItem('qm_provider');
-
-    if (preferred && !hasSavedPref) {
+    if (!hasSavedPref) {
       state.provider = preferred;
       const sel = document.getElementById('provider-select');
       if (sel) sel.value = preferred;
-      localStorage.setItem('qm_provider', preferred);
+      // Don't persist — let the user choose; this is just the first-load default
     }
 
     _updateKeyUI();
