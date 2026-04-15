@@ -1073,31 +1073,48 @@
 
       <!-- AI Provider -->
       <div class="sidebar-section-label">AI Provider</div>
-      <div style="padding:0 4px;display:flex;flex-direction:column;gap:6px;">
+      <div style="padding:0 4px;display:flex;flex-direction:column;gap:8px;">
+
+        <!-- Provider selector — always visible -->
         <div class="select-wrap">
           <select id="provider-select" onchange="onProviderChange()">
+            <option value="groq">Groq (LLaMA 3) — Free</option>
             <option value="gemini">Gemini (Google)</option>
             <option value="openai">OpenAI GPT</option>
-            <option value="groq">Groq (LLaMA 3)</option>
             <option value="ollama">Ollama (Local)</option>
           </select>
         </div>
-        <div id="server-key-notice" style="display:none;font-size:11px;padding:5px 8px;
-             border-radius:7px;background:var(--green-bg);color:var(--green);
-             border:1px solid rgba(22,163,74,.2);">
-          ✅ API key provided by server — no setup needed
-        </div>
+
+        <!-- API key input — always visible -->
         <div class="api-key-wrap" id="api-key-wrap">
-          <input class="api-key-input" id="api-key-input" type="password" placeholder="Your API Key (optional)..." />
+          <input class="api-key-input" id="api-key-input" type="password"
+                 placeholder="Your API key (optional)…"
+                 title="Leave blank to use the default shared key" />
           <button class="btn-sm" onclick="saveApiKey()">Save</button>
         </div>
-        <div id="no-key-notice" style="display:none;font-size:11px;padding:5px 8px;
-             border-radius:7px;background:var(--amber-bg);color:var(--amber);
-             border:1px solid rgba(217,119,6,.2);line-height:1.5;">
-          ⚠️ Enter a free API key to use AI features.<br>
-          <a href="https://aistudio.google.com" target="_blank" style="color:var(--amber);text-decoration:underline">Get Gemini key free →</a>
+
+        <!-- Hint: shown when no user key entered — tells them the default is active -->
+        <div id="default-key-notice" style="font-size:11px;padding:5px 9px;border-radius:7px;
+             background:var(--green-bg,#f0fdf4);color:var(--green,#16a34a);
+             border:1px solid rgba(22,163,74,.25);line-height:1.5;display:none;">
+          ✅ Using default shared key — works out of the box.<br>
+          <span style="opacity:.8">Enter your own key above for higher limits.</span>
         </div>
-        <div id="provider-status-wrap" style="display:flex;flex-direction:column;gap:4px;"></div>
+
+        <!-- Hint: shown after user saves their own key -->
+        <div id="user-key-notice" style="font-size:11px;padding:5px 9px;border-radius:7px;
+             background:var(--accent-bg);color:var(--accent);
+             border:1px solid rgba(99,102,241,.25);line-height:1.5;display:none;">
+          🔑 Using your personal API key.
+          <button onclick="clearApiKey()" style="background:none;border:none;
+            color:var(--accent);cursor:pointer;text-decoration:underline;
+            font-size:11px;padding:0;margin-left:4px;">Clear</button>
+        </div>
+
+        <!-- Get-key links per provider -->
+        <div id="provider-key-links" style="font-size:10.5px;color:var(--ink-3);line-height:1.6;"></div>
+
+        <div id="provider-status-wrap" style="display:none"></div>
       </div>
     </div>
   </aside>
@@ -2951,18 +2968,19 @@ const state = {
 //  INIT
 // ════════════════════════════════════════════════════════
 async function init() {
-  // Restore saved API keys and provider
+  // Restore saved API keys and provider from localStorage
   try {
     const saved = JSON.parse(localStorage.getItem('qm_api_keys') || '{}');
-    state.apiKeys = saved;
-    const prov = localStorage.getItem('qm_provider') || 'gemini';
+    state.apiKeys  = saved;
+    const prov     = localStorage.getItem('qm_provider') || 'groq';
+    state.provider = prov;
+    state.apiKey   = saved[prov] || '';
+    // Sync provider selector
     const provSelect = document.getElementById('provider-select');
     if (provSelect) provSelect.value = prov;
-    state.provider = prov;
-    state.apiKey = state.apiKeys[prov] || '';
+    // Show masked key if user has one saved
     const apiInput = document.getElementById('api-key-input');
     if (apiInput) apiInput.value = state.apiKey ? '••••••••' : '';
-    updateApiKeyVisibility();
   } catch(e) {}
 
   // Restore JWT session
@@ -3126,75 +3144,130 @@ function renderSchemaTree(schema) {
 // ════════════════════════════════════════════════════════
 //  AI PROVIDER
 // ════════════════════════════════════════════════════════
+
+// Provider selector changed by user
 function onProviderChange() {
-  state.provider = document.getElementById('provider-select').value;
+  const sel = document.getElementById('provider-select');
+  state.provider = sel ? sel.value : state.provider;
+  // Restore any saved key for this provider
   state.apiKey = state.apiKeys[state.provider] || '';
-  document.getElementById('api-key-input').value = state.apiKey ? '••••••••' : '';
+  const inp = document.getElementById('api-key-input');
+  if (inp) inp.value = state.apiKey ? '••••••••' : '';
   localStorage.setItem('qm_provider', state.provider);
-  updateApiKeyVisibility();
+  _updateKeyUI();
   updateProviderPill();
 }
 
-function updateApiKeyVisibility() {
-  const local        = ['ollama','huggingface'].includes(state.provider);
-  const hasUserKey   = !!state.apiKey;
-  const hasServerKey = !!(state.serverKeys && state.serverKeys[state.provider]);
+// Keep for backward compatibility — no longer used
+function onProviderChangeAdv() { onProviderChange(); }
+function toggleAdvancedAI()    {}
+function updateApiKeyVisibility() {}
 
-  // API key input: hide for local providers; also hide if server key is set and user hasn't overridden
-  const keyWrap = document.getElementById('api-key-wrap');
-  if (keyWrap) keyWrap.style.display = (local || (hasServerKey && !hasUserKey)) ? 'none' : 'flex';
-
-  // Server key notice
-  const serverNotice = document.getElementById('server-key-notice');
-  if (serverNotice) serverNotice.style.display = (!local && hasServerKey) ? '' : 'none';
-
-  // No-key warning: show only if no user key AND no server key AND not local
-  const noKeyNotice = document.getElementById('no-key-notice');
-  if (noKeyNotice) noKeyNotice.style.display = (!local && !hasUserKey && !hasServerKey) ? '' : 'none';
-}
-
+// Save user's own API key
 function saveApiKey() {
-  const val = document.getElementById('api-key-input').value;
+  const val = document.getElementById('api-key-input')?.value;
   if (!val || val === '••••••••') return;
   state.apiKey = val;
   state.apiKeys[state.provider] = val;
   localStorage.setItem('qm_api_keys', JSON.stringify(state.apiKeys));
   document.getElementById('api-key-input').value = '••••••••';
-  updateApiKeyVisibility();
+  _updateKeyUI();
   toast('✅ API key saved');
+}
+
+// Clear user's key and revert to default server key
+function clearApiKey() {
+  state.apiKey = '';
+  delete state.apiKeys[state.provider];
+  localStorage.setItem('qm_api_keys', JSON.stringify(state.apiKeys));
+  const inp = document.getElementById('api-key-input');
+  if (inp) inp.value = '';
+  _updateKeyUI();
+  toast('✅ Cleared — now using default shared key');
+}
+
+// Update the notices below the key input
+function _updateKeyUI() {
+  const hasUserKey   = !!state.apiKey;
+  const hasServerKey = !!(state.serverKeys && state.serverKeys[state.provider]);
+  const isLocal      = ['ollama'].includes(state.provider);
+
+  const defaultNotice = document.getElementById('default-key-notice');
+  const userNotice    = document.getElementById('user-key-notice');
+  const keyWrap       = document.getElementById('api-key-wrap');
+
+  // Key input placeholder and visibility
+  const inp = document.getElementById('api-key-input');
+  if (inp) {
+    if (isLocal) {
+      inp.placeholder = 'No key needed for local models';
+    } else if (hasServerKey) {
+      inp.placeholder = 'Your API key (optional — default active)';
+    } else {
+      inp.placeholder = 'Paste your API key here…';
+    }
+  }
+
+  if (hasUserKey) {
+    // User has entered their own key
+    if (defaultNotice) defaultNotice.style.display = 'none';
+    if (userNotice)    userNotice.style.display    = '';
+  } else if (hasServerKey || isLocal) {
+    // No user key, but server key covers this provider (or local needs none)
+    if (defaultNotice) defaultNotice.style.display = '';
+    if (userNotice)    userNotice.style.display    = 'none';
+  } else {
+    // No key anywhere — show warning instead
+    if (defaultNotice) {
+      defaultNotice.style.background = 'var(--amber-bg)';
+      defaultNotice.style.color      = 'var(--amber)';
+      defaultNotice.style.borderColor = 'rgba(217,119,6,.25)';
+      defaultNotice.innerHTML = '⚠️ No API key set. Enter your key above or contact the site owner.';
+      defaultNotice.style.display = '';
+    }
+    if (userNotice) userNotice.style.display = 'none';
+  }
+
+  // Per-provider key links
+  const links = {
+    gemini: '<a href="https://aistudio.google.com" target="_blank" style="color:var(--accent)">Get free Gemini key →</a>',
+    openai: '<a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent)">Get OpenAI key →</a>',
+    groq:   '<a href="https://console.groq.com" target="_blank" style="color:var(--accent)">Get free Groq key →</a>',
+    ollama: 'Run <code style="font-size:10px;background:var(--surface-2);padding:1px 4px;border-radius:4px">ollama serve</code> locally.',
+  };
+  const linkEl = document.getElementById('provider-key-links');
+  if (linkEl) linkEl.innerHTML = links[state.provider] || '';
 }
 
 async function loadProviderStatus() {
   try {
     const r = await fetch('/api/providers');
     const d = await r.json();
-
-    // Store server key availability so other functions can check it
     state.serverKeys = d.server_keys || {};
 
-    const wrap = document.getElementById('provider-status-wrap');
-    wrap.innerHTML = '';
-    Object.entries(d.providers || {}).forEach(([name, info]) => {
-      const ok       = info.available;
-      const serverOk = !!(d.server_keys && d.server_keys[name]);
-      const pill     = document.createElement('div');
-      pill.className = 'provider-pill';
-      const statusLabel = ok
-        ? (serverOk ? '✅ Ready (server key)' : '✅ Ready')
-        : 'Not configured';
-      pill.innerHTML = `<div class="provider-dot ${ok?'ok':'err'}"></div>`
-        + `<span>${name}</span>`
-        + `<span style="margin-left:auto;font-size:10px">${statusLabel}</span>`;
-      wrap.appendChild(pill);
-    });
+    // If the user has no saved provider preference, auto-select the
+    // server's preferred one (usually groq since GROQ_API_KEY is set)
+    const preferred = d.preferred_provider;
+    const hasSavedPref = !!localStorage.getItem('qm_provider');
+
+    if (preferred && !hasSavedPref) {
+      state.provider = preferred;
+      const sel = document.getElementById('provider-select');
+      if (sel) sel.value = preferred;
+      localStorage.setItem('qm_provider', preferred);
+    }
+
+    _updateKeyUI();
     updateProviderPill();
-    updateApiKeyVisibility();   // re-evaluate now we know server key status
-  } catch(e) {}
+  } catch(e) {
+    console.warn('Could not load provider status:', e);
+  }
 }
 
 function updateProviderPill() {
   const label = { gemini:'Gemini', openai:'GPT', groq:'Groq', ollama:'Ollama' };
-  document.getElementById('provider-pill-label').textContent = label[state.provider] || state.provider;
+  const el = document.getElementById('provider-pill-label');
+  if (el) el.textContent = label[state.provider] || state.provider;
 }
 
 // ════════════════════════════════════════════════════════
